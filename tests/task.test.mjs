@@ -15,8 +15,13 @@ import { STIMULUS_CHANNELS } from "../fishing/brain-host.mjs";
   const schedule = buildSchedule(12345);
   assert.ok(schedule.length >= 4, "an episode should get several bites");
   assert.ok(
-    schedule.every((event) => event.type === "bite"),
-    "commit 1 has one event type",
+    schedule.every((event) => event.type === "bite" || event.type === "decoy"),
+    "every event is a bite or a decoy",
+  );
+  assert.deepEqual(
+    buildSchedule(12345, { decoys: false }).map((event) => event.type),
+    buildSchedule(12345, { decoys: false }).map(() => "bite"),
+    "decoys can be switched off for a single-event-type run",
   );
   assert.ok(schedule[0].atMs >= TASK.leadInMs, "no bite inside the lead-in");
   assert.ok(
@@ -60,6 +65,12 @@ import { STIMULUS_CHANNELS } from "../fishing/brain-host.mjs";
   assert.equal(loomAt(events, 1000), TASK.biteLoomHz);
   assert.equal(loomAt(events, 1000 + TASK.biteDurationMs - 1), TASK.biteLoomHz);
   assert.equal(loomAt(events, 1000 + TASK.biteDurationMs), 0);
+
+  // A decoy is the same pulse at a lower amplitude, on the same channel.
+  const decoy = [{ atMs: 1000, type: "decoy" }];
+  assert.equal(loomAt(decoy, 1000), TASK.decoyLoomHz);
+  assert.ok(TASK.decoyLoomHz < TASK.biteLoomHz, "a decoy is the weaker pulse");
+  assert.equal(loomAt(decoy, 1000 + TASK.biteDurationMs), 0);
 
   const stimulus = stimulusAt(events, 1000);
   for (const key of Object.keys(stimulus)) {
@@ -118,6 +129,39 @@ import { STIMULUS_CHANNELS } from "../fishing/brain-host.mjs";
   const free = TASK.windowMs + TASK.recastMs;
   assert.ok(!episode.canDecide(free - 1), "still blocked one millisecond early");
   assert.ok(episode.canDecide(free), "free again at the end of the re-cast");
+}
+
+// --- decoys ------------------------------------------------------------------
+// Hooking a decoy is a snapped line, however convincing the dip was.
+{
+  const episode = createEpisode([{ atMs: 1000, type: "decoy" }]);
+  const result = episode.step(1100, 1);
+  assert.equal(result.outcome, "snap");
+  assert.equal(result.reward, TASK.rewardSnap);
+  const summary = episode.finish();
+  assert.equal(summary.bites, 0, "a decoy is not a fish");
+  assert.equal(summary.decoys, 1);
+  assert.equal(summary.decoysHooked, 1);
+  assert.equal(summary.decoyHookRate, 1);
+  assert.equal(summary.caught, 0);
+  assert.equal(summary.missed, 0, "there was no fish to miss");
+}
+// Letting a decoy go costs nothing.
+{
+  const episode = createEpisode([{ atMs: 1000, type: "decoy" }]);
+  for (let t = 0; t < 3000; t += TASK.windowMs) episode.step(t, 0);
+  const summary = episode.finish();
+  assert.equal(summary.totalReward, 0);
+  assert.equal(summary.decoysHooked, 0);
+  assert.equal(summary.decoyHookRate, 0);
+}
+// A snap away from any decoy is not counted against the decoys.
+{
+  const episode = createEpisode([{ atMs: 1000, type: "decoy" }]);
+  assert.equal(episode.step(30000, 1).outcome, "snap");
+  const summary = episode.finish();
+  assert.equal(summary.snapped, 1);
+  assert.equal(summary.decoysHooked, 0);
 }
 
 // --- summary arithmetic -----------------------------------------------------

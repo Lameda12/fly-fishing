@@ -55,8 +55,9 @@ python3 run.py
 ```
 
 That one command fetches the simulator if it is missing, records the
-descending-neuron response cache if it is missing, trains the readout, records a
-pair of episodes, and serves the viewer.
+descending-neuron response cache if it is missing, converts the fly body, trains
+the readout, records a pair of episodes, reports the baselines, and serves the
+viewer.
 
 The steps are also available separately:
 
@@ -66,6 +67,7 @@ python3 run.py cache                                # re-record the response cac
 python3 run.py train -- --seed 7 --episodes 1200    # only train
 python3 run.py record                               # only re-record the replay pair
 python3 run.py report                               # only re-run the baselines table
+python3 run.py glb                                  # only convert the fly body
 python3 run.py serve                                # only serve the viewer
 python3 run.py build                                # build the static site
 python3 run.py test                                 # the scripted layer's tests
@@ -93,21 +95,29 @@ the bugs that would silently corrupt a result live.
 
 ## The task
 
-A bobber floats 13 units out. Fish take the bait at random times.
+A bobber floats 13 units out. Things take the bait at random times, and half of
+them are not fish.
 
 | Rule | Value | Scripted or simulated |
 | --- | --- | --- |
 | Episode length | 60 s of brain time | scripted |
 | Decision window | 50 ms | scripted |
-| Bite | 150 Hz pulse on `loomHz` for 250 ms | scripted stimulus, simulated response |
-| Gap between bites | exponential, mean 5 s, minimum 3 s | scripted |
+| **Bite** (a real fish) | 150 Hz pulse on `loomHz` for 250 ms | scripted stimulus, simulated response |
+| **Decoy** (a nibble) | 60 Hz pulse on `loomHz` for 250 ms | scripted stimulus, simulated response |
+| Share of events that are decoys | 50% | scripted |
+| Gap between events | exponential, mean 5 s, minimum 3 s | scripted |
 | Hook within 500 ms of a bite | fish caught, **+1** | scripted |
-| Hook on nothing | line snapped, **-0.5** | scripted |
+| Hook on a decoy, or on nothing | line snapped, **-0.5** | scripted |
 | Bite nobody hooks | **0** | scripted |
 | After any hook | 1.5 s re-cast, no decisions | scripted |
 
-Bite times and spacing are redrawn every episode from an exponential with a
+Event times and spacing are redrawn every episode from an exponential with a
 minimum, so there is no rhythm for a fixed-interval policy to lock onto.
+
+**The bobber dips on a decoy too**, which is the whole point of having them. A
+policy that watches the water can tell that *something* happened; only a policy
+that watches the fly can tell *what*. That is what the fixed-delay-after-dip
+baseline measures, and it is the score to beat.
 
 The re-cast is what makes the reward function non-degenerate. Without it, a
 coin-flip policy would hook 600 times in an episode and the scoring would be
@@ -127,7 +137,9 @@ looming input, as the raw `escape_giant_fiber` rate:
 | `escape_giant_fiber` out (Hz) | 0.0 | 45.5 | 67.4 | 110.1 | 134.7 | 160.0 | 177.4 | 199.0 | 218.1 |
 
 Monotone across the whole range. Pulse amplitude survives into the readout,
-which is what a later decoy event will need.
+which is what the decoy discrimination runs on: a 150 Hz bite peaks the giant
+fiber near 199 Hz and a 60 Hz decoy near 160 Hz. A 39 Hz gap, against whatever
+trial-to-trial spread the network has, is the entire signal available.
 
 **The readout reads the raw rates, not `frame.motor`.** Upstream's normalized
 motor fields divide by 35 and clamp to 1, so `motor.escape` pins at 1.0 for any
@@ -231,33 +243,66 @@ above come from the full cache.
 
 ## What is in this commit, and what is not
 
-This is the first commit, and it is deliberately the smallest thing that works
-end to end. Present:
+Present:
 
-- one fish event type, the task, the scoring, the re-cast
-- the response cache, the splice, and its measured residual
+- bites and decoys, the task, the scoring, the re-cast
+- the response cache, the splice, and its measured residual per event type
 - the REINFORCE readout, checkpoints, and the learning curve
-- a random control and an oracle
-- the replay viewer, with a **placeholder capsule fly**
+- four baselines: oracle, fixed delay after the dip, fixed interval, and a
+  rate-matched random control
+- the real NeuroMechFly body, converted to GLB, with a labelled placeholder
+  when the GLB has not been generated
+- the replay viewer, two recordings side by side
 
 Not yet, and each is a named next step rather than a silent omission:
 
-- **Decoy nibbles.** With one event type the task is easy, and the honest
-  reading of the result below is that the readout learned a threshold on one
-  population. Decoys are what make it a discrimination problem.
-- **The real fly model.** The NeuroMechFly meshes converted to GLB, posed from
-  upstream's CPG joint angles. The capsule is a stand-in and is labelled as one
-  everywhere it appears.
 - **Live mode.** A WebSocket from the Python side, with a documented schema.
   Replay mode is all that ships here, which is also what lets `web/` deploy as a
   static site with no backend.
-- **The fixed-delay-after-dip baseline** is implemented but is not reported
-  separately, because with no decoys the bobber only ever dips on a real bite,
-  which makes that policy identical to the oracle by construction. It becomes a
-  real baseline the moment decoys exist.
-- **The ablations** (`--ablation weight-shuffle`, `--ablation input-shuffle`) are
-  implemented in `fishing/brain-host.mjs` and unit tested, but the ablated caches
-  are not recorded yet, so no ablation result is claimed.
+- **A close-up camera and the webm export.** The viewer has orbit controls and a
+  shared transport; the follow camera and the one-click MediaRecorder capture
+  are not built.
+- **The ablation results.** Both ablations (`--ablation weight-shuffle`,
+  `--ablation input-shuffle`) are implemented in `fishing/brain-host.mjs` and
+  unit tested, and each needs its own recorded cache. No ablation number is
+  claimed until those runs exist.
+- **A live-sim validation column.** The results below are measured on spliced
+  cache episodes. Running whole episodes against the live network to confirm the
+  splice end to end is the check that has not been done yet.
+
+## The fly model
+
+`tools/build_fly_glb.py` converts the NeuroMechFly body out of the fetched
+checkout into one glTF binary:
+
+```bash
+python3 tools/build_fly_glb.py     # reads vendor/, writes web/public/fly.glb
+```
+
+It parses `assets/model/fly.xml` (68 bodies, 66 hinges, 69 mesh geoms), loads
+the 39 binary STLs, applies each declared mesh scale (thirty of the meshes are
+mirrored, so their winding is flipped back), welds vertices, recomputes smooth
+normals, and writes a node tree that mirrors the MJCF body tree. No third-party
+Python package is involved.
+
+The rig goes in the glTF's `extras` rather than a skin, because this is a
+rigid-body tree and not a skinned mesh. Each hinge records the node it turns,
+its axis, its neutral angle and the control index that drives it, so the viewer
+can do forward kinematics without a physics engine. The converter derives qpos
+addresses by walking the tree and **checks that derivation against the actuator
+table for all 42 actuated joints** before trusting it for the 24 passive ones.
+
+**`web/public/fly.glb` is gitignored.** It is geometry converted from a
+repository that ships no LICENSE, so it is generated locally and never
+committed, exactly like the response cache. The viewer treats its absence as
+normal: without it you get a labelled placeholder capsule, and the HUD says
+which body is on screen. A static deploy that wants the real body has to run the
+converter as part of its build, from its own checkout.
+
+**The legs are at the model's neutral pose.** Upstream's CPG could drive them
+and the rig carries everything needed for that, but a fly sitting on a dock
+holding a rod is not walking, and animating a gait it is not performing would be
+drawing behaviour rather than showing it. The idle sway is scripted and labelled.
 
 ## The viewer
 
@@ -285,16 +330,17 @@ definition. Schema version 1:
 
 ```jsonc
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "kind": "fly-fishing-replay",
   "policy": "readoutGreedy",        // or "random"
   "label": "Trained readout",
   "seed": 3109511962,
   "windowMs": 50,                   // one frame is one decision window
   "episodeMs": 60000,
-  "summary": { "bites": 13, "caught": 13, "snapped": 0, "missed": 0, "totalReward": 13, "...": "..." },
-  "events":   [{ "tMs": 3856, "type": "bite" }],
-  "outcomes": [{ "tMs": 3950, "type": "catch" }],   // or "snap"
+  "summary": { "bites": 7, "decoys": 6, "caught": 7, "decoysHooked": 1, "snapped": 1, "...": "..." },
+  "events":   [{ "tMs": 3856, "type": "bite" }],    // or "decoy"
+  "outcomes": [{ "tMs": 3950, "type": "catch" },
+               { "tMs": 9910, "type": "snap", "onDecoy": true }],
   "frames": {                       // columnar, one entry per window
     "escapeHz": [0, 107.4, 159.8],  // raw escape_giant_fiber, simulated
     "walkHz":   [39.5, 38.1, 40.2], // raw walk_dnp09, simulated
@@ -304,6 +350,9 @@ definition. Schema version 1:
   "provenance": { "simulated": ["..."], "scripted": ["..."], "frozen": "...", "trained": "..." }
 }
 ```
+
+`onDecoy` separates the two kinds of snapped line: falling for a decoy is the
+discrimination failing, and snapping on empty water is not.
 
 The viewer samples that 20 Hz grid and interpolates the bobber between windows,
 so it renders smoothly at whatever frame rate the browser gives it.

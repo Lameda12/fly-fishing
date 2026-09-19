@@ -35,10 +35,17 @@ function fakeCache({ baselineTraces = 2, biteTraces = 3 } = {}) {
         ),
       ),
     },
+    // Bites read 9, decoys read 5, so a spliced episode says which is which.
     bite: {
       seeds: [],
       traces: Array.from({ length: biteTraces }, () =>
         Array.from({ length: responseWindows }, () => READOUT_FEATURES.map(() => 9)),
+      ),
+    },
+    decoy: {
+      seeds: [],
+      traces: Array.from({ length: biteTraces }, () =>
+        Array.from({ length: responseWindows }, () => READOUT_FEATURES.map(() => 5)),
       ),
     },
   };
@@ -56,10 +63,15 @@ function fakeCache({ baselineTraces = 2, biteTraces = 3 } = {}) {
     "every row is one rate per readout population",
   );
 
-  // Response rows land exactly where the bites are.
+  // Each event's own response lands exactly where that event is.
+  assert.ok(
+    events.some((event) => event.type === "decoy") && events.some((event) => event.type === "bite"),
+    "this fixture schedule should contain both kinds of event",
+  );
   for (const event of events) {
     const index = Math.round(event.atMs / TASK.windowMs);
-    assert.equal(rows[index][0], 9, `no response at the bite at ${event.atMs} ms`);
+    const expected = event.type === "bite" ? 9 : 5;
+    assert.equal(rows[index][0], expected, `wrong response at the ${event.type} at ${event.atMs} ms`);
   }
   // A window a long way from any bite is still baseline.
   const quiet = Math.round((TASK.leadInMs - TASK.windowMs) / TASK.windowMs);
@@ -104,11 +116,25 @@ function fakeCache({ baselineTraces = 2, biteTraces = 3 } = {}) {
       }),
     /shorter than an episode/,
   );
+
+  // A cache recorded before decoys existed must say so rather than splicing a
+  // bite response in where a decoy belongs.
+  const { decoy, ...withoutDecoys } = cache;
+  void decoy;
+  assert.throws(
+    () =>
+      spliceEpisode({
+        cache: withoutDecoys,
+        events: [{ atMs: 2000, type: "decoy" }],
+        seed: 1,
+      }),
+    /no "decoy" responses/,
+  );
 }
 
 // --- the residual is reported per feature -----------------------------------
 {
-  const rows = spliceResidual(fakeCache({ baselineTraces: 1 }));
+  const rows = spliceResidual(fakeCache({ baselineTraces: 1 }), "bite");
   assert.equal(rows.length, READOUT_FEATURES.length);
   assert.deepEqual(rows.map((row) => row.feature), [...READOUT_FEATURES]);
   // The fixture's baseline ramps 1 + w/10000 over its windows, so its mean is
@@ -128,6 +154,15 @@ function fakeCache({ baselineTraces = 2, biteTraces = 3 } = {}) {
   assert.equal(track.length, WINDOWS);
   assert.equal(track[0], 0, "the bobber floats before the bite");
   assert.ok(Math.max(...track) > 0.9, "a real bite pulls it right under");
+
+  // A decoy dips the bobber too, or the dip-reacting baseline would be an
+  // oracle in disguise and the discrimination task would be given away.
+  const decoyTrack = bobberTrack([{ atMs: 1000, type: "decoy" }], WINDOWS);
+  assert.ok(Math.max(...decoyTrack) > 0.2, "a decoy must visibly dip the bobber");
+  assert.ok(
+    Math.max(...decoyTrack) < Math.max(...track),
+    "and dip it less than a real bite does",
+  );
   assert.ok(
     track[Math.round(1000 / TASK.windowMs)] < track[Math.round(1150 / TASK.windowMs)],
     "the dip should deepen after onset",

@@ -18,6 +18,8 @@ interface Hud {
   escapeBar: HTMLElement;
   hook: HTMLElement;
   hookBar: HTMLElement;
+  decoys: HTMLElement;
+  body: HTMLElement;
   flash: HTMLElement;
 }
 
@@ -28,10 +30,12 @@ function buildHud(container: HTMLElement, replay: Replay): Hud {
     <div class="hud-head">
       <strong>${replay.label}</strong>
       <span>${replay.provenance.trained}</span>
+      <span data-body class="body-note">loading body</span>
     </div>
     <div class="hud-counts">
       <div class="count"><b data-caught>0</b><span>caught</span></div>
       <div class="count snap"><b data-snapped>0</b><span>snapped</span></div>
+      <div class="count decoy"><b data-decoys>0</b><span>decoys hooked</span></div>
       <div class="count"><b data-timer>0.0s</b><span>episode</span></div>
     </div>
     <div class="hud-meters">
@@ -54,6 +58,8 @@ function buildHud(container: HTMLElement, replay: Replay): Hud {
     escapeBar: pick("escape-bar"),
     hook: pick("hook"),
     hookBar: pick("hook-bar"),
+    decoys: pick("decoys"),
+    body: pick("body"),
     flash,
   };
 }
@@ -66,6 +72,7 @@ export class Player {
   private nextOutcome = 0;
   private caught = 0;
   private snapped = 0;
+  private decoysHooked = 0;
   private flashLife = 0;
   private elapsedSeconds = 0;
 
@@ -80,12 +87,20 @@ export class Player {
     this.hud = buildHud(container, replay);
     this.frames = replay.frames.bobber.length;
     this.paint(0);
+    // The real body is generated locally and gitignored, so its absence is
+    // normal rather than an error; the badge says which one is on screen.
+    void this.pond.attachBody(`${import.meta.env.BASE_URL}fly.glb`).then((real) => {
+      this.hud.body.textContent = real
+        ? "NeuroMechFly body, neutral pose"
+        : "placeholder body (run: python3 tools/build_fly_glb.py)";
+    });
   }
 
   reset(): void {
     this.nextOutcome = 0;
     this.caught = 0;
     this.snapped = 0;
+    this.decoysHooked = 0;
     this.flashLife = 0;
     this.paint(0);
   }
@@ -115,6 +130,7 @@ export class Player {
         this.pond.splash();
       } else {
         this.snapped++;
+        if (outcome.onDecoy) this.decoysHooked++;
         this.flashLife = 1;
       }
       this.nextOutcome++;
@@ -134,10 +150,15 @@ export class Player {
     this.nextOutcome = 0;
     this.caught = 0;
     this.snapped = 0;
+    this.decoysHooked = 0;
     for (const outcome of this.replay.outcomes) {
       if (outcome.tMs > episodeMs) break;
-      if (outcome.type === "catch") this.caught++;
-      else this.snapped++;
+      if (outcome.type === "catch") {
+        this.caught++;
+      } else {
+        this.snapped++;
+        if (outcome.onDecoy) this.decoysHooked++;
+      }
       this.nextOutcome++;
     }
     this.paint(Math.min(this.frames - 1, Math.floor(episodeMs / this.replay.windowMs)));
@@ -148,6 +169,7 @@ export class Player {
     const pHook = this.replay.frames.pHook[index];
     this.hud.caught.textContent = String(this.caught);
     this.hud.snapped.textContent = String(this.snapped);
+    this.hud.decoys.textContent = `${this.decoysHooked}/${this.replay.summary.decoys}`;
     this.hud.timer.textContent = `${((index * this.replay.windowMs) / 1000).toFixed(1)}s`;
     this.hud.escape.textContent = `${escapeHz.toFixed(0)} Hz`;
     this.hud.escapeBar.style.width = `${Math.min(100, (escapeHz / 220) * 100).toFixed(1)}%`;

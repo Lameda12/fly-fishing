@@ -171,7 +171,10 @@ export function createPolicy(kind, options = {}) {
      */
     case "random": {
       const windows = Math.round(task.episodeMs / task.windowMs);
-      const p = options.hookProbability ?? (events.length || 1) / windows;
+      // Matched to the number of catchable fish, which is the oracle's hook
+      // count, not to the number of times the bobber moved.
+      const bites = events.filter((event) => event.type === "bite").length;
+      const p = options.hookProbability ?? (bites || 1) / windows;
       return { kind, hookProbability: p, act: () => (rng.next() < p ? 1 : 0) };
     }
 
@@ -192,9 +195,9 @@ export function createPolicy(kind, options = {}) {
 
     /**
      * Hooks a fixed delay after the bobber dips. The bobber dips on every fish
-     * event, so this policy knows *that* something happened and not *what*. With
-     * one bite type and no decoys it is identical to the oracle by construction;
-     * it only becomes a real baseline once decoys dip the bobber too.
+     * event, so this policy knows *that* something happened and not *what*. It is
+     * the hard baseline: it catches every fish and falls for every decoy, which
+     * is exactly the score to beat by telling the two apart.
      */
     case "dipDelay": {
       const delayMs = options.delayMs ?? 150;

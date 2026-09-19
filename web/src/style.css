@@ -36,17 +36,19 @@ button { font: inherit; color: inherit; }
 
 .hud {
   position: absolute; z-index: 4; top: 12px; left: 12px;
-  width: min(280px, calc(100% - 24px)); padding: 10px 12px;
+  width: min(320px, calc(100% - 24px)); padding: 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 7px;
   background: rgba(13, 17, 18, 0.82); backdrop-filter: blur(9px);
   pointer-events: none;
 }
 .hud-head strong { font-size: 14px; font-weight: 500; }
 .hud-head span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
-.hud-counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0 9px; }
+.hud-head .body-note { color: #7d8a85; font-size: 9.5px; }
+.hud-counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 9px; }
 .count b { display: block; font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--green); }
 .count.snap b { color: var(--red); }
-.count:last-child b { color: var(--ink); }
+.count.decoy b { color: var(--yellow); font-size: 15px; }
+.hud-counts .count:nth-child(3) b { color: var(--ink); }
 .count span { display: block; margin-top: 1px; color: var(--muted); font-size: 10px; }
 
 .hud-meters label { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; margin-top: 7px; }

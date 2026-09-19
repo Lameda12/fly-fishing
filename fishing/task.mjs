@@ -28,6 +28,15 @@ export const TASK = Object.freeze({
 
   /** A real bite: a strong pulse on the looming channel. */
   biteLoomHz: 150,
+  /**
+   * A decoy nibble: the same pulse, weaker. The bobber dips either way, so the
+   * only thing that separates them is how hard the fly's giant fiber fires.
+   * 150 Hz and 60 Hz peak the raw escape_giant_fiber rate at about 199 and
+   * 160 Hz respectively, which is a real but not generous gap; see the README.
+   */
+  decoyLoomHz: 60,
+  /** Share of fish events that are decoys. */
+  decoyShare: 0.5,
   biteDurationMs: 250,
 
   /** Hooking this long after a bite onset still lands the fish. */
@@ -62,15 +71,21 @@ export const WINDOWS_PER_EPISODE = Math.round(TASK.episodeMs / TASK.windowMs);
  * fixed across episodes. A policy that hooks on a schedule cannot win, because
  * there is no schedule to learn.
  */
-export function buildSchedule(seed, { episodeMs = TASK.episodeMs, task = TASK } = {}) {
+export function buildSchedule(seed, { episodeMs = TASK.episodeMs, task = TASK, decoys = true } = {}) {
   const rng = createRng(seed);
   const events = [];
   let at = task.leadInMs + rng.range(0, task.minBiteGapMs);
   while (at < episodeMs - task.hookWindowMs) {
-    events.push({ atMs: Math.round(at), type: "bite" });
+    const decoy = decoys && rng.next() < task.decoyShare;
+    events.push({ atMs: Math.round(at), type: decoy ? "decoy" : "bite" });
     at += task.minBiteGapMs + rng.exponential(task.meanBiteGapMs - task.minBiteGapMs);
   }
   return events;
+}
+
+/** The pulse amplitude one fish event drives, in Hz. Scripted. */
+export function loomHzFor(event, task = TASK) {
+  return event.type === "decoy" ? task.decoyLoomHz : task.biteLoomHz;
 }
 
 /** Looming drive in Hz at `tMs`, from the episode's events. Scripted. */
@@ -78,7 +93,7 @@ export function loomAt(events, tMs, task = TASK) {
   let hz = 0;
   for (const event of events) {
     if (tMs >= event.atMs && tMs < event.atMs + task.biteDurationMs) {
-      hz = Math.max(hz, task.biteLoomHz);
+      hz = Math.max(hz, loomHzFor(event, task));
     }
   }
   return hz;
@@ -102,14 +117,28 @@ export function stimulusAt(events, tMs, task = TASK) {
 export function createEpisode(events, { task = TASK, episodeMs = TASK.episodeMs } = {}) {
   const claimed = new Set();
   let recastUntilMs = -1;
-  const tally = { bites: events.length, caught: 0, snapped: 0, missed: 0, hooks: 0, decisions: 0 };
+  const bites = events.filter((event) => event.type === "bite").length;
+  const tally = {
+    bites,
+    decoys: events.length - bites,
+    caught: 0,
+    snapped: 0,
+    decoysHooked: 0,
+    missed: 0,
+    hooks: 0,
+    decisions: 0,
+  };
   let ret = 0;
 
-  /** The unclaimed bite whose hook window covers `tMs`, if any. */
+  /**
+   * The unclaimed *real bite* whose hook window covers `tMs`, if any. A decoy
+   * inside its window is deliberately not matched here: hooking one is a
+   * snapped line, which is the whole point of having decoys.
+   */
   const liveBiteAt = (tMs) => {
     for (let i = 0; i < events.length; i++) {
       const event = events[i];
-      if (claimed.has(i)) continue;
+      if (claimed.has(i) || event.type !== "bite") continue;
       if (tMs >= event.atMs && tMs < event.atMs + task.hookWindowMs) return i;
     }
     return -1;
@@ -146,6 +175,9 @@ export function createEpisode(events, { task = TASK, episodeMs = TASK.episodeMs 
         return { decision: true, action: 1, reward: task.rewardCatch, outcome: "catch" };
       }
       tally.snapped++;
+      if (events.some((event) => event.type === "decoy" && tMs >= event.atMs && tMs < event.atMs + task.hookWindowMs)) {
+        tally.decoysHooked++;
+      }
       ret += task.rewardSnap;
       return { decision: true, action: 1, reward: task.rewardSnap, outcome: "snap" };
     },
@@ -160,6 +192,9 @@ export function createEpisode(events, { task = TASK, episodeMs = TASK.episodeMs 
         // compared on even when they hook wildly different numbers of times.
         falseHooksPerMinute: (tally.snapped * 60_000) / episodeMs,
         hookPrecision: tally.hooks ? tally.caught / tally.hooks : 0,
+        // Of the decoys that went past, how many the policy fell for. This is
+        // the number the discrimination task is really about.
+        decoyHookRate: tally.decoys ? tally.decoysHooked / tally.decoys : 0,
       };
     },
   };

@@ -95,19 +95,31 @@ assert.throws(() => createReadout({ weights: [1, 2, 3] }), /needs 17 weights/);
 // --- the policies -----------------------------------------------------------
 {
   const events = buildSchedule(7);
+  const bites = events.filter((event) => event.type === "bite");
+  assert.ok(bites.length && bites.length < events.length, "the fixture needs both kinds");
 
-  const oracle = createPolicy("oracle", { task: TASK, events });
-  const fired = [];
-  for (let t = 0; t < TASK.episodeMs; t += TASK.windowMs) if (oracle.act(t)) fired.push(t);
-  assert.equal(fired.length, events.length, "the oracle hooks once per bite");
-  for (let i = 0; i < events.length; i++) {
-    const delay = fired[i] - events[i].atMs;
+  const fireTimes = (policy) => {
+    const fired = [];
+    for (let t = 0; t < TASK.episodeMs; t += TASK.windowMs) if (policy.act(t)) fired.push(t);
+    return fired;
+  };
+
+  // The oracle hooks once per real fish and never on a decoy.
+  const oracle = fireTimes(createPolicy("oracle", { task: TASK, events }));
+  assert.equal(oracle.length, bites.length, "the oracle hooks once per bite");
+  for (let i = 0; i < bites.length; i++) {
+    const delay = oracle[i] - bites[i].atMs;
     assert.ok(delay >= 0 && delay < TASK.hookWindowMs, `oracle hook ${delay} ms after the bite`);
   }
 
-  // Rate-matched random: its expected hook count is the number of bites.
+  // The dip-delay baseline reacts to the bobber, so it hooks on everything.
+  const dip = fireTimes(createPolicy("dipDelay", { task: TASK, events }));
+  assert.equal(dip.length, events.length, "dip-delay hooks on every fish event");
+  assert.ok(dip.length > oracle.length, "which is more often than the oracle does");
+
+  // Rate-matched random: its expected hook count is the number of catchable fish.
   const random = createPolicy("random", { task: TASK, events, seed: 3 });
-  assert.ok(Math.abs(random.hookProbability * 1200 - events.length) < 1e-9);
+  assert.ok(Math.abs(random.hookProbability * 1200 - bites.length) < 1e-9);
 
   const fixed = createPolicy("fixedInterval", { task: TASK, events, intervalMs: 5000 });
   let hooks = 0;

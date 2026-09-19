@@ -16,7 +16,7 @@ import { deriveSeed } from "./rng.mjs";
 import { TASK, buildSchedule } from "./task.mjs";
 import { evalSeeds } from "./train.mjs";
 
-export const REPLAY_SCHEMA_VERSION = 1;
+export const REPLAY_SCHEMA_VERSION = 2;
 
 // Looked up rather than hardcoded, so reordering READOUT_FEATURES cannot
 // silently send the wrong column into a recording.
@@ -67,9 +67,20 @@ export function buildReplay({ cache, seed, policyKind, label, readout = null, ta
     collect: true,
   });
 
+  const withinAnyDecoy = (tMs) =>
+    events.some(
+      (event) =>
+        event.type === "decoy" && tMs >= event.atMs && tMs < event.atMs + task.hookWindowMs,
+    );
   const outcomes = trace
     .filter((frame) => frame.outcome === "catch" || frame.outcome === "snap")
-    .map((frame) => ({ tMs: frame.tMs, type: frame.outcome }));
+    .map((frame) => ({
+      tMs: frame.tMs,
+      type: frame.outcome,
+      // A snap on a decoy and a snap on empty water are both snapped lines, but
+      // only one of them is the discrimination failing.
+      ...(frame.outcome === "snap" ? { onDecoy: withinAnyDecoy(frame.tMs) } : {}),
+    }));
 
   return {
     schemaVersion: REPLAY_SCHEMA_VERSION,
@@ -84,6 +95,7 @@ export function buildReplay({ cache, seed, policyKind, label, readout = null, ta
       hookWindowMs: task.hookWindowMs,
       recastMs: task.recastMs,
       biteLoomHz: task.biteLoomHz,
+      decoyLoomHz: task.decoyLoomHz,
       rewardCatch: task.rewardCatch,
       rewardSnap: task.rewardSnap,
     },
@@ -92,9 +104,12 @@ export function buildReplay({ cache, seed, policyKind, label, readout = null, ta
       bites: summary.bites,
       caught: summary.caught,
       snapped: summary.snapped,
+      decoys: summary.decoys,
+      decoysHooked: summary.decoysHooked,
       missed: summary.missed,
       totalReward: summary.totalReward,
       catchRate: round3(summary.catchRate),
+      decoyHookRate: round3(summary.decoyHookRate),
       falseHooksPerMinute: round3(summary.falseHooksPerMinute),
     },
     events: events.map((event) => ({ tMs: event.atMs, type: event.type })),
@@ -211,6 +226,7 @@ async function main() {
     console.log(
       `  ${path.relative(process.cwd(), target).padEnd(46)}` +
         ` ${replay.summary.caught}/${replay.summary.bites} caught,` +
+        ` ${replay.summary.decoysHooked}/${replay.summary.decoys} decoys hooked,` +
         ` ${replay.summary.snapped} snapped,` +
         ` reward ${replay.summary.totalReward}`,
     );

@@ -12,11 +12,13 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { FlyModel } from "./fly";
 
 const WATER_SIZE = 90;
 const BOBBER_DISTANCE = 13;
 const BOBBER_DIP_DEPTH = 1.5;
-const ROD_TIP = new THREE.Vector3(0.9, 0, 2.2);
+/** Where the line leaves the rod, in the fly anchor's frame. */
+const ROD_TIP = new THREE.Vector3(3.0, 0.45, 2.5);
 
 /** A pooled splash droplet. */
 interface Droplet {
@@ -96,8 +98,15 @@ function buildDock(): THREE.Group {
   return group;
 }
 
-/** The placeholder fly: a capsule thorax, an abdomen, a head and two eyes. */
-function buildFly(): THREE.Group {
+/**
+ * The placeholder fly: a capsule thorax, an abdomen, a head and two eyes.
+ *
+ * Used when web/public/fly.glb has not been generated. The real NeuroMechFly
+ * body is converted from the fetched simulator checkout by
+ * tools/build_fly_glb.py and is gitignored, because upstream ships no LICENSE
+ * and this repository does not redistribute anything derived from it.
+ */
+function buildFlyPlaceholder(): THREE.Group {
   const group = new THREE.Group();
   const body = new THREE.MeshStandardMaterial({ color: 0x9a6a20, roughness: 0.62 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x3a2a12, roughness: 0.7 });
@@ -139,18 +148,20 @@ function buildFly(): THREE.Group {
     group.add(wing);
   }
 
-  // A rod, so the line has somewhere honest to start.
-  const rod = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.035, 0.06, 2.6, 8),
-    new THREE.MeshStandardMaterial({ color: 0xd8c08a, roughness: 0.6 }),
-  );
-  rod.position.set(0.55, 0.18, 1.2);
-  rod.rotation.set(0, 0.55, 0);
-  group.add(rod);
-
-  group.position.set(-2.2, 0, 1.95);
   group.scale.setScalar(1.4);
   return group;
+}
+
+/** The rod is the viewer's own prop, not part of the body model. */
+function buildRod(): THREE.Mesh {
+  const rod = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.05, 0.085, 3.6, 8),
+    new THREE.MeshStandardMaterial({ color: 0xd8c08a, roughness: 0.6 }),
+  );
+  rod.position.set(1.85, 0.45, 1.35);
+  rod.rotation.set(0.12, 0.72, 0);
+  rod.castShadow = true;
+  return rod;
 }
 
 function buildBobber(): THREE.Group {
@@ -181,7 +192,10 @@ export class PondScene {
   private readonly controls: OrbitControls;
   private readonly water: THREE.Mesh;
   private readonly waterUniforms: { uTime: { value: number } };
-  private readonly fly: THREE.Group;
+  /** The dock perch. Whatever body is in use hangs off this. */
+  private readonly flyAnchor: THREE.Group;
+  private placeholder: THREE.Group | null;
+  private body: FlyModel | null = null;
   private readonly bobber: THREE.Group;
   private readonly line: THREE.Line;
   private readonly linePoints: THREE.Vector3[];
@@ -203,7 +217,7 @@ export class PondScene {
     THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
     this.camera = new THREE.PerspectiveCamera(44, 1, 0.1, 400);
     this.camera.up.set(0, 0, 1);
-    this.camera.position.set(-5, -20.5, 7);
+    this.camera.position.set(-6.5, -21.5, 7.2);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -214,7 +228,7 @@ export class PondScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.target.set(5.2, 0, 1.1);
+    this.controls.target.set(4.4, 0, 1.1);
     this.controls.maxPolarAngle = Math.PI * 0.49;
     this.controls.minDistance = 4;
     this.controls.maxDistance = 70;
@@ -249,8 +263,11 @@ export class PondScene {
     this.scene.add(bed);
 
     this.scene.add(buildDock());
-    this.fly = buildFly();
-    this.scene.add(this.fly);
+    this.flyAnchor = new THREE.Group();
+    this.flyAnchor.position.set(-2.2, 0, 1.95);
+    this.placeholder = buildFlyPlaceholder();
+    this.flyAnchor.add(this.placeholder, buildRod());
+    this.scene.add(this.flyAnchor);
     this.bobber = buildBobber();
     this.scene.add(this.bobber);
 
@@ -281,6 +298,26 @@ export class PondScene {
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
     this.resize();
+  }
+
+  /**
+   * Swap the placeholder for the real NeuroMechFly body, if it has been
+   * converted. Returns true when the real body is now in the scene.
+   */
+  async attachBody(url: string): Promise<boolean> {
+    const model = await FlyModel.load(url);
+    if (!model) return false;
+    this.body = model;
+    if (this.placeholder) {
+      this.flyAnchor.remove(this.placeholder);
+      this.placeholder = null;
+    }
+    this.flyAnchor.add(model.object);
+    return true;
+  }
+
+  get usingPlaceholder(): boolean {
+    return this.body === null;
   }
 
   resize(): void {
@@ -325,12 +362,14 @@ export class PondScene {
     this.bobber.position.z = -dip * BOBBER_DIP_DEPTH + Math.sin(elapsedSeconds * 2.1) * 0.06;
     this.bobber.rotation.x = Math.sin(elapsedSeconds * 1.7) * 0.12 + dip * 0.5;
 
-    this.fly.position.z = 1.95 + Math.sin(idlePhase) * 0.05;
-    this.fly.rotation.y = Math.sin(idlePhase * 0.5) * 0.02;
+    // A drawn idle, not a gait: the body's legs hold the model's neutral pose
+    // because the task does not involve walking.
+    this.flyAnchor.position.z = 1.95 + Math.sin(idlePhase) * 0.05;
+    this.flyAnchor.rotation.y = Math.sin(idlePhase * 0.5) * 0.02;
 
     // The line hangs from the rod tip to the bobber with a little sag, and the
     // sag tightens as the bobber is pulled under.
-    const from = ROD_TIP.clone().add(this.fly.position);
+    const from = ROD_TIP.clone().add(this.flyAnchor.position);
     const to = this.bobber.position.clone().setZ(this.bobber.position.z + 0.35);
     const sag = 0.85 * (1 - dip);
     for (let i = 0; i < this.linePoints.length; i++) {

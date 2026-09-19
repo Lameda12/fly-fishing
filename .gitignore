@@ -9,6 +9,9 @@ web/dist/
 # redistributable here. tools/fetch_sim.py puts a local checkout in vendor/.
 vendor/
 
-# Descending-neuron response cache: regenerated from the local simulator
-# checkout, and derived from upstream data, so it is not committed either.
+# Derived from the fetched simulator, which ships no LICENSE, so neither of
+# these is committed or redistributed here. Both are regenerated locally:
+#   results/dn-cache*.json   python3 run.py cache
+#   web/public/fly.glb       python3 tools/build_fly_glb.py
 results/dn-cache*.json
+web/public/fly.glb

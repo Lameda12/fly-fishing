@@ -2,8 +2,9 @@
 """Fly Fishing on top of Embodied Fly Lab: one command for the whole thing.
 
 `python3 run.py` fetches the simulator if it is missing, records the
-descending-neuron response cache if it is missing, trains the readout, records a
-pair of episodes, and then serves the viewer.
+descending-neuron response cache if it is missing, converts the fly body, trains
+the readout, records a pair of episodes, reports the baselines, and then serves
+the viewer.
 
 The expensive step is the cache, and only the cache: it is the one thing that
 runs the whole-brain network. Everything after it is fast, so re-training or
@@ -21,9 +22,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 CACHE = ROOT / "results" / "dn-cache.json"
+FLY_GLB = WEB / "public" / "fly.glb"
 RECORDINGS = WEB / "public" / "recordings" / "index.json"
 
-MODES = ("all", "fetch", "cache", "train", "record", "report", "serve", "build", "test")
+MODES = ("all", "fetch", "cache", "train", "record", "report", "glb", "serve", "build", "test")
 
 
 def run(command: list[str], cwd: Path = ROOT) -> int:
@@ -83,6 +85,11 @@ def report(extra: list[str]) -> int:
     return run(["node", str(ROOT / "tools" / "report.mjs"), *extra])
 
 
+def build_glb(extra: list[str]) -> int:
+    """Convert the fetched body into web/public/fly.glb (gitignored)."""
+    return run([sys.executable, str(ROOT / "tools" / "build_fly_glb.py"), *extra])
+
+
 def tests() -> int:
     failed = 0
     for path in sorted((ROOT / "tests").glob("*.test.mjs")):
@@ -136,7 +143,7 @@ def parse_args() -> argparse.Namespace:
         default="all",
         choices=MODES,
         help="all (default): everything missing, then serve. "
-        "fetch / cache / train / record / report / serve / build / test run one step.",
+        "fetch / cache / train / record / report / glb / serve / build / test run one step.",
     )
     parser.add_argument(
         "--rebuild-cache",
@@ -178,6 +185,8 @@ def main() -> int:
         return record(extra)
     if args.mode == "report":
         return report(extra)
+    if args.mode == "glb":
+        return build_glb(extra)
 
     # mode == "all"
     if args.rebuild_cache or not CACHE.exists():
@@ -189,6 +198,10 @@ def main() -> int:
             return 1
     else:
         print(f"Response cache already at {CACHE.relative_to(ROOT)}; pass --rebuild-cache to redo it.")
+
+    # Cheap, and the viewer falls back to a placeholder without it.
+    if not FLY_GLB.exists():
+        build_glb([])
 
     if train([]) != 0:
         return 1

@@ -10,7 +10,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
 import { REPO_ROOT } from "../fishing/brain-host.mjs";
-import { spliceResidual } from "../fishing/cache.mjs";
+import { EVENT_SECTIONS, spliceResidual } from "../fishing/cache.mjs";
 import { createPolicy, createReadout, FEATURE_NAMES } from "../fishing/readout.mjs";
 import { deriveSeed } from "../fishing/rng.mjs";
 import { TASK } from "../fishing/task.mjs";
@@ -82,6 +82,11 @@ async function main() {
       () => createPolicy("readoutGreedy", { task: TASK, readout }),
     ],
     [
+      "Fixed delay after the bobber dips",
+      "dipDelay",
+      ({ events }) => createPolicy("dipDelay", { task: TASK, events }),
+    ],
+    [
       "Fixed interval, every 5 s",
       "fixedInterval",
       ({ events }) => createPolicy("fixedInterval", { task: TASK, events, intervalMs: 5000 }),
@@ -100,6 +105,7 @@ async function main() {
       label,
       policy: kind,
       catchRate: Number(result.catchRate.toFixed(4)),
+      decoyHookRate: Number(result.decoyHookRate.toFixed(4)),
       falseHooksPerMinute: Number(result.falseHooksPerMinute.toFixed(3)),
       hookPrecision: Number(result.hookPrecision.toFixed(4)),
       meanReward: Number(result.totalReward.toFixed(3)),
@@ -115,7 +121,9 @@ async function main() {
     cache: { ablation: cache.ablation, seed: cache.seed, generatedAt: cache.generatedAt },
     readout: { runSeed: checkpoint.runSeed, episodes: checkpoint.episodes },
     rows,
-    spliceResidual: spliceResidual(cache),
+    spliceResidual: Object.fromEntries(
+      EVENT_SECTIONS.filter((type) => cache[type]).map((type) => [type, spliceResidual(cache, type)]),
+    ),
     weights: FEATURE_NAMES.map((name, i) => ({
       feature: name,
       weight: Number(checkpoint.readout.weights[i].toFixed(4)),
@@ -138,23 +146,29 @@ async function main() {
   const lines = [];
   lines.push(`All four policies on the same ${episodes} evaluation episodes, seed ${seed}:`);
   lines.push("");
-  lines.push("| Policy | Catch rate | Snapped lines / min | Hook precision | Mean reward |");
-  lines.push("| --- | ---: | ---: | ---: | ---: |");
+  lines.push(
+    "| Policy | Catch rate | Decoys hooked | Snapped lines / min | Hook precision | Mean reward |",
+  );
+  lines.push("| --- | ---: | ---: | ---: | ---: | ---: |");
   for (const row of rows) {
     lines.push(
-      `| ${row.label} | ${pct(row.catchRate)} | ${row.falseHooksPerMinute.toFixed(2)} | ` +
+      `| ${row.label} | ${pct(row.catchRate)} | ${pct(row.decoyHookRate)} | ` +
+        `${row.falseHooksPerMinute.toFixed(2)} | ` +
         `${pct(row.hookPrecision)} | ${row.meanReward.toFixed(2)} |`,
     );
   }
   lines.push("");
-  lines.push("Splice residual, response tail minus baseline:");
-  lines.push("");
-  lines.push("| Feature | Baseline (Hz) | Response tail (Hz) | Residual (Hz) |");
-  lines.push("| --- | ---: | ---: | ---: |");
-  for (const row of report.spliceResidual) {
-    lines.push(
-      `| \`${row.feature}\` | ${row.baselineHz} | ${row.responseTailHz} | ${row.residualHz} |`,
-    );
+  for (const [type, residual] of Object.entries(report.spliceResidual)) {
+    lines.push(`Splice residual for a ${type}, response tail minus baseline:`);
+    lines.push("");
+    lines.push("| Feature | Baseline (Hz) | Response tail (Hz) | Residual (Hz) |");
+    lines.push("| --- | ---: | ---: | ---: |");
+    for (const row of residual) {
+      lines.push(
+        `| \`${row.feature}\` | ${row.baselineHz} | ${row.responseTailHz} | ${row.residualHz} |`,
+      );
+    }
+    lines.push("");
   }
   lines.push("");
   lines.push("Readout weights:");

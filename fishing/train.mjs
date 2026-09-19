@@ -58,7 +58,13 @@ export function evalSeeds(runSeed, count) {
  * the learning curve and for the baselines table.
  */
 export function evaluate({ cache, seeds, makePolicy, task = TASK }) {
-  const totals = { catchRate: 0, falseHooksPerMinute: 0, totalReward: 0, hookPrecision: 0 };
+  const totals = {
+    catchRate: 0,
+    decoyHookRate: 0,
+    falseHooksPerMinute: 0,
+    totalReward: 0,
+    hookPrecision: 0,
+  };
   const perEpisode = [];
   for (const seed of seeds) {
     const events = buildSchedule(seed, { task });
@@ -129,6 +135,13 @@ async function main() {
       seeds: heldOut,
       makePolicy: ({ seed, events }) => createPolicy("random", { task: TASK, events, seed }),
     }),
+    // The hard baseline: reacts to the bobber, so it catches everything and
+    // falls for everything. Beating it means telling a bite from a decoy.
+    dipDelay: evaluate({
+      cache,
+      seeds: heldOut,
+      makePolicy: ({ events }) => createPolicy("dipDelay", { task: TASK, events }),
+    }),
   };
 
   say("");
@@ -136,6 +149,8 @@ async function main() {
   say(`  cache: ${path.relative(process.cwd(), cachePath)} (ablation ${cache.ablation})`);
   say(
     `  held out ${evalCount} episodes; oracle catches ${(reference.oracle.catchRate * 100).toFixed(1)}%,` +
+      ` dip-delay catches ${(reference.dipDelay.catchRate * 100).toFixed(1)}% while hooking` +
+      ` ${(reference.dipDelay.decoyHookRate * 100).toFixed(1)}% of decoys,` +
       ` random control catches ${(reference.random.catchRate * 100).toFixed(1)}%`,
   );
   say("");
@@ -163,6 +178,7 @@ async function main() {
       points.push({
         episode,
         catchRate: Number(result.catchRate.toFixed(4)),
+        decoyHookRate: Number(result.decoyHookRate.toFixed(4)),
         falseHooksPerMinute: Number(result.falseHooksPerMinute.toFixed(3)),
         hookPrecision: Number(result.hookPrecision.toFixed(4)),
         meanReward: Number(result.totalReward.toFixed(3)),
@@ -170,6 +186,7 @@ async function main() {
       checkpoints.push({ episode, weights: [...readout.weights] });
       say(
         `  episode ${String(episode).padStart(4)}   catch ${(result.catchRate * 100).toFixed(1).padStart(5)}%` +
+          `   decoys hooked ${(result.decoyHookRate * 100).toFixed(1).padStart(5)}%` +
           `   false hooks ${result.falseHooksPerMinute.toFixed(2).padStart(5)}/min` +
           `   reward ${result.totalReward.toFixed(2).padStart(6)}`,
       );
@@ -199,6 +216,7 @@ async function main() {
         heldOut: {
           episodes: evalCount,
           catchRate: Number(final.catchRate.toFixed(4)),
+          decoyHookRate: Number(final.decoyHookRate.toFixed(4)),
           falseHooksPerMinute: Number(final.falseHooksPerMinute.toFixed(3)),
           hookPrecision: Number(final.hookPrecision.toFixed(4)),
           meanReward: Number(final.totalReward.toFixed(3)),
@@ -228,6 +246,8 @@ async function main() {
           oracleCatchRate: Number(reference.oracle.catchRate.toFixed(4)),
           randomCatchRate: Number(reference.random.catchRate.toFixed(4)),
           randomFalseHooksPerMinute: Number(reference.random.falseHooksPerMinute.toFixed(3)),
+          dipDelayCatchRate: Number(reference.dipDelay.catchRate.toFixed(4)),
+          dipDelayDecoyHookRate: Number(reference.dipDelay.decoyHookRate.toFixed(4)),
         },
         points,
         checkpoints,
@@ -251,6 +271,7 @@ async function main() {
         oracleCatchRate: reference.oracle.catchRate,
         randomCatchRate: reference.random.catchRate,
         randomFalseHooksPerMinute: reference.random.falseHooksPerMinute,
+        dipDelayDecoyHookRate: reference.dipDelay.decoyHookRate,
       },
     }),
     "utf8",

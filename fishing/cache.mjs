@@ -23,9 +23,13 @@
 
 import { READOUT_FEATURES, featuresOf } from "./brain-host.mjs";
 import { createRng, deriveSeed } from "./rng.mjs";
-import { TASK } from "./task.mjs";
+import { TASK, loomHzFor } from "./task.mjs";
 
-export const CACHE_SCHEMA_VERSION = 1;
+/** The recorded sections. `baseline` is the background; the rest are events. */
+export const EVENT_SECTIONS = Object.freeze(["bite", "decoy"]);
+export const SECTIONS = Object.freeze(["baseline", ...EVENT_SECTIONS]);
+
+export const CACHE_SCHEMA_VERSION = 2;
 
 /** How long a bite response is recorded for, from pulse onset. */
 export const RESPONSE_MS = 2_800;
@@ -51,9 +55,15 @@ export async function buildCache({
   task = TASK,
   seed = 0x5eed1234,
   baselineTraces = 4,
-  biteTraces = 16,
+  eventTraces = 16,
+  sections = SECTIONS,
   onProgress,
 } = {}) {
+  for (const section of sections) {
+    if (!SECTIONS.includes(section)) {
+      throw new Error(`unknown cache section "${section}"; expected ${SECTIONS.join(", ")}`);
+    }
+  }
   const windowMs = task.windowMs;
   const background = { hungerHz: task.backgroundHungerHz };
 
@@ -66,31 +76,41 @@ export async function buildCache({
     return rows;
   };
 
-  const baselineWindows = Math.round(BASELINE_MS / windowMs);
-  const baseline = { settleMs: SETTLE_MS, durationMs: BASELINE_MS, seeds: [], traces: [] };
-  for (let i = 0; i < baselineTraces; i++) {
-    const traceSeed = deriveSeed(seed, "baseline", i);
-    onProgress?.({ stage: "baseline", index: i, of: baselineTraces });
-    host.reset(traceSeed);
-    host.settle(SETTLE_MS, background);
-    baseline.seeds.push(traceSeed);
-    baseline.traces.push(record(baselineWindows, () => background));
+  const recorded = {};
+
+  if (sections.includes("baseline")) {
+    const baselineWindows = Math.round(BASELINE_MS / windowMs);
+    const baseline = { settleMs: SETTLE_MS, durationMs: BASELINE_MS, seeds: [], traces: [] };
+    for (let i = 0; i < baselineTraces; i++) {
+      const traceSeed = deriveSeed(seed, "baseline", i);
+      onProgress?.({ stage: "baseline", index: i, of: baselineTraces });
+      host.reset(traceSeed);
+      host.settle(SETTLE_MS, background);
+      baseline.seeds.push(traceSeed);
+      baseline.traces.push(record(baselineWindows, () => background));
+    }
+    recorded.baseline = baseline;
   }
 
   const responseWindows = Math.round(RESPONSE_MS / windowMs);
-  const bite = { settleMs: SETTLE_MS, durationMs: RESPONSE_MS, seeds: [], traces: [] };
-  for (let i = 0; i < biteTraces; i++) {
-    const traceSeed = deriveSeed(seed, "bite", i);
-    onProgress?.({ stage: "bite", index: i, of: biteTraces });
-    host.reset(traceSeed);
-    host.settle(SETTLE_MS, background);
-    bite.seeds.push(traceSeed);
-    bite.traces.push(
-      record(responseWindows, (tMs) => ({
-        ...background,
-        loomHz: tMs < task.biteDurationMs ? task.biteLoomHz : 0,
-      })),
-    );
+  for (const type of EVENT_SECTIONS) {
+    if (!sections.includes(type)) continue;
+    const hz = loomHzFor({ type }, task);
+    const section = { settleMs: SETTLE_MS, durationMs: RESPONSE_MS, loomHz: hz, seeds: [], traces: [] };
+    for (let i = 0; i < eventTraces; i++) {
+      const traceSeed = deriveSeed(seed, type, i);
+      onProgress?.({ stage: type, index: i, of: eventTraces });
+      host.reset(traceSeed);
+      host.settle(SETTLE_MS, background);
+      section.seeds.push(traceSeed);
+      section.traces.push(
+        record(responseWindows, (tMs) => ({
+          ...background,
+          loomHz: tMs < task.biteDurationMs ? hz : 0,
+        })),
+      );
+    }
+    recorded[type] = section;
   }
 
   return {
@@ -107,13 +127,14 @@ export async function buildCache({
       neurons: host.neuronCount,
       edges: host.edgeCount,
     },
+    sections: Object.keys(recorded),
     task: {
       backgroundHungerHz: task.backgroundHungerHz,
       biteLoomHz: task.biteLoomHz,
+      decoyLoomHz: task.decoyLoomHz,
       biteDurationMs: task.biteDurationMs,
     },
-    baseline,
-    bite,
+    ...recorded,
     provenance:
       "Every row is raw readout output from the upstream whole-brain LIF network, " +
       "recorded through its own stimulus channels. Nothing here is interpolated or modelled.",
@@ -151,7 +172,14 @@ export function spliceEpisode({
   const rows = trace.slice(offset, offset + windows).map((row) => row.slice());
 
   for (const event of events) {
-    const response = cache.bite.traces[rng.int(cache.bite.traces.length)];
+    const section = cache[event.type];
+    if (!section) {
+      throw new Error(
+        `the cache has no "${event.type}" responses; re-record it with: ` +
+          `node fishing/build-cache.mjs --sections ${event.type} --merge-into <cache>`,
+      );
+    }
+    const response = section.traces[rng.int(section.traces.length)];
     const start = Math.round(event.atMs / task.windowMs);
     for (let i = 0; i < response.length; i++) {
       const target = start + i;
@@ -170,14 +198,14 @@ export function spliceEpisode({
  * the response is being cut off mid-transient and the episode after an event is
  * not what the live simulator would produce.
  */
-export function spliceResidual(cache) {
+export function spliceResidual(cache, type = "bite") {
   const tail = (trace) => trace[trace.length - 1];
   const meanOf = (traces, pick) =>
     READOUT_FEATURES.map((_, f) => traces.reduce((sum, t) => sum + pick(t)[f], 0) / traces.length);
 
-  // Compare the last window of each bite response against the mean baseline
-  // level, which is what the splice replaces it with.
-  const biteTail = meanOf(cache.bite.traces, tail);
+  // Compare the last window of each response against the mean baseline level,
+  // which is what the splice replaces it with.
+  const biteTail = meanOf(cache[type].traces, tail);
   const baselineMean = READOUT_FEATURES.map((_, f) => {
     let total = 0;
     let count = 0;
