@@ -24,26 +24,35 @@ and episode 600.
 **Trained.** A linear readout. Seventeen weights mapping eight descending and
 motor readout rates (this window and the last) plus a bias to one number, pushed
 through a sigmoid, sampled as hook-or-wait, fitted by REINFORCE. They live in
-`fishing/readout.mjs` and are written to `results/readout.json`.
+`fishing/readout.mjs` and are written to `results/readout.json`. The five-stage
+voyage below trains four of those readouts, one per decision stage, and is told
+which stage it is in by the voyage clock — 68 numbers in total, and the section
+on it says what that hand-off costs in honesty.
 
-**The fly does not learn to fish.** No biological learning happens here, and
-none is claimed. A policy-gradient fit learns that a particular population
+**The fly does not learn to fish**, or to cook, or to eat. No biological
+learning happens here, and none is claimed. A policy-gradient fit learns that a particular population
 firing hard means a fish is on the line, in the same sense that a logistic
 regression on a thermometer learns what a fever is. The fish are a drawing.
 
 ## Demo
 
+![One voyage: bait, fish, row back, cook, eat](docs/voyage.png)
+
+Five stills from one 60-second voyage under the trained readout, captured out of
+the viewer itself (`tools/` has no screenshot step; these came from a headless
+Chromium against `npm run preview`). The fishing panel is a frame after a catch,
+which is where the splash comes from.
+
 <!-- DEMO GIF SLOT -->
 <!--
-  Drop the recording in here, replacing the line below:
-      ![Trained readout against the random control](docs/demo.gif)
+  A moving capture still to come. The viewer's own "Record 30s" button writes a
+  webm via MediaRecorder; convert and drop it in here as:
+      ![Trained readout against the reflex baseline](docs/demo.gif)
   Suggested capture:
     1. the viewer at 1x, through two or three catches side by side
-    2. the random panel snapping a line, for the red flash
-    3. results/learning-curve.svg
+    2. the reflex panel swallowing a burnt morsel, for the red flash
+    3. results/voyage-curve.svg
 -->
-
-_Demo recording not captured yet. See the slot above._
 
 ## Run it
 
@@ -423,31 +432,225 @@ from those recordings. That it also scores 0 is the expected and uninteresting
 outcome, and it is there so that the weight-shuffle row has something to be
 compared against.
 
+## The voyage: five stages, and what it took to train four of them
+
+The single-stage task above is one decision made over and over. The voyage is
+the loop it sits inside: **bait the hook, fish, row back, cook the catch, eat.**
+Sixty seconds, five stages, four of which take a decision.
+
+| stage | what it is | act | good | bad | window |
+| --- | --- | --- | --- | --- | --- |
+| Bait the hook | 10 s | grip | `bait-firm`, touch 220 Hz | `bait-slip`, touch 60 Hz | 500 ms |
+| Fishing | 25 s | hook | `bite`, loom 150 Hz | `decoy`, loom 60 Hz | 500 ms |
+| Row back | 5 s | none | — | — | — |
+| Cook the catch | 10 s | lift the pan | `pan-ready`, odor 145 Hz | none | 2500 ms |
+| Eat | 10 s | swallow | `morsel-good`, sugar 100 Hz | `morsel-burnt`, sugar 25 Hz | 500 ms |
+
+Two things are worth saying plainly before the numbers.
+
+**Rowing back takes no decision.** Steering a body means closing a loop through
+MuJoCo, and the cache the training runs on is only legitimate because acting has
+no sensory consequence (see *why the cache is not a shortcut*). Rather than
+invent a decision the simulator cannot support, the row stage is transit: the
+boat moves, nothing is scored.
+
+**The stages are chained.** How much there is to cook is how many fish were
+actually landed, and how much there is to eat is how much was cooked. An empty
+net means an empty pan. That is what makes it a loop rather than four tasks
+stapled together, and it turned out to be the single biggest obstacle to
+training it.
+
+### Results
+
+Five training seeds, 4000 voyages each, scored on 1000 held-out voyages.
+Per-stage numbers are the fraction of that stage's rewarding events acted on.
+
+| policy | prep | fish | cook | eat | overall | reward |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Four readout heads** (4 x 17 weights) | 100.0% | 99.8% | 99.5% | 99.4% | **98.8%** | **6.17** |
+| One shared readout (17 weights) | 100.0% | 99.8% | 100.0% | 32.5% | 90.0% | 5.30 |
+| Oracle (knows every event) | 99.6% | 99.7% | 99.4% | 99.8% | 98.5% | 6.86 |
+| Reflex (acts on every event, good or not) | 99.3% | 99.0% | 99.4% | 99.7% | 98.2% | 4.31 |
+| Random (rate-matched) | — | — | — | — | 8.8% | −4.20 |
+
+The reflex baseline is the voyage's version of the fixed-delay control: it acts
+on everything that happens, so it matches the oracle on catch rate and loses
+badly on reward, because half of what happens is a slipping bait, a decoy or a
+burnt morsel. Telling those apart is the whole task, and reward is where it
+shows.
+
+**The honest caveat: eating trains on 3 of the 5 seeds and collapses to exactly
+0.0% on the other 2.** It is the stage with the weakest signal and the least
+data, and the 99.4% above is a converged seed. Baiting, fishing and cooking
+trained on 5 of 5.
+
+### Why the shared readout cannot eat
+
+Both head shapes are kept, and `--heads shared` reruns the second row, because
+the shared readout fails in a legible way. One weight vector that already
+satisfies baiting, fishing and cooking cannot put eating's threshold where it
+needs to be, and it lands on 32.5% on all five seeds — not a coin flip, a
+ceiling. Four heads remove the coupling instead of fighting it.
+
+**What that costs in honesty: the stage index is scripted.** It comes from the
+voyage's clock, not from the fly. Nothing decodes which stage it is in from the
+descending rates. The shared row is the one that is not told, and it is reported
+next to the other for exactly that reason.
+
+### What was actually wrong, and how it was found
+
+The first version of this trained baiting and fishing to ceiling and left
+cooking and eating at exactly 0.0%, on every seed, for 1500 voyages. A
+supervised logistic fit on the same seventeen features at the same decision
+moments gets 99.8% and is correct on all four stages, so the barrier was never
+representation. Three separate things were wrong.
+
+**1. Cooking was anti-learnable, not merely hard.** Every stage inherited the
+bite reflex's 500 ms window without anyone checking what the network does with
+each stimulus. Recorded under the same background drive, it does very different
+things:
+
+| stimulus | carrying population | peak | peaks at | above half-peak for |
+| --- | --- | --- | --- | --- |
+| `bait-firm` | `groom_adn1` | 104.0 Hz | 200 ms | 300 ms |
+| `bite` | `escape_giant_fiber` | 184.8 Hz | 200 ms | 300 ms |
+| `morsel-good` | `feed_mn9` | 66.4 Hz | 200 ms | 250 ms |
+| `pan-ready` | `turn_left` | 27.1 Hz | **2150 ms** | **2750 ms** |
+
+Three sharp transients that fit inside a 500 ms window, and one tonic response
+to a 250 ms pulse. With a 500 ms window, cooking's only tell is elevated for
+5.5 times as long as it pays, so acting on it loses money at any rate a random
+policy explores with — and the gradient on `turn_left` correctly ran *negative*,
+away from the only feature that could solve the stage. It reached −2.4 after
+1500 voyages when the sign it needed was positive, at every step size and both
+head shapes tried.
+
+Cooking now gets a 2500 ms window matched to the response the network actually
+produces. That is the honest reading of the task as well: a bite is a reflex and
+a hot pan is a condition. The re-cast still allows one act per pan, so it buys
+no free reward, only a window the signal fits inside. With it, `turn_left`
+reaches +8.5 and the stage trains to 100%.
+
+**2. Eating was a slow race, not a wall.** `feed_mn9` separates a good morsel
+from a burnt one at 66.4 ± 14.0 Hz against 18.5 ± 18.9 Hz — d' 2.9, with
+overlapping ranges, against fishing's 9.1. With about one rewarding chance per
+voyage it takes roughly 2200 voyages for that weight to overtake the bias. The
+episode budget was 1500. It is now 4000. This is also why eating is the stage
+that still collapses on 2 seeds in 5: it is the one where the signal and the
+data are both thin.
+
+**3. The chain starves its own tail.** Nothing to cook unless a fish was landed,
+so for the first ~200 voyages the cooking and eating stages have *no events at
+all*. Those voyages are not neutral: the head still sees its 200 windows, acting
+in any of them is still a mistake, and it dutifully learns the only lesson
+available — never act. By the time the first pan appears it is at a bias near −6
+and P(act) near 0.001, and it never recovers. Heads are now held out of a voyage
+in which their stage never happened. A voyage where a stage had no events is not
+a hard sample of that stage, it is an absence of it. (Dormant means no events,
+not no *rewarding* events: a voyage where every bite turned out to be a decoy
+did happen, and those refusals are exactly the samples that teach the
+difference.)
+
+The learning curve shows all three at once — the stages come online in chain
+order, fishing and baiting by 500 voyages, cooking around 1000, eating around
+2500:
+
+![Voyage learning curve](results/voyage-curve.svg)
+
+### Two exploration fixes that did not work
+
+Both are left documented in `fishing/readout.mjs` where they were attempted,
+because the reason each fails is more useful than the fact that it did.
+
+The obvious reading of "P(act) fell to 1e-4 and never came back" is that
+exploration died, so put in a floor: sample from `q = (1 − e)·p + e/2`.
+
+- **Scored against `q`** — the unbiased, textbook choice, gradient
+  `(1 − e)·p·(1 − p)/q` — reintroduces the exact factor the floor was meant to
+  escape. With `p` at 1e-4 the numerator is 1e-4, so however often the coin
+  forces an act, the resulting update is scaled straight back down to the size
+  the saturated policy would have given anyway. Unbiased, and just as stuck:
+  0.0% for 1500 voyages.
+- **Scored against `p`** keeps the update full size but adds a constant push
+  toward acting in *every* window, and a voyage has about 1100 decision windows
+  of which roughly 30 contain anything. That one was worse than doing nothing:
+  0.0% on every stage, including the two that used to work.
+
+The floor was never the problem. A uniform floor of 1% costs about −5.5 reward
+per voyage in a task worth about +6, and what it mostly teaches is that acting
+is a mistake — which, at random times, it is.
+
+### Feature centring
+
+`buildFeatures` can subtract the network's resting rate from each population,
+measured from the cache's own baseline traces:
+
+```
+forward_odn1  2.16    reverse_mdn         0.00
+walk_dnp09   40.11    groom_adn1          0.00
+turn_left     0.24    escape_giant_fiber  0.00
+turn_right    2.10    feed_mn9            0.00
+```
+
+Four of the eight rest at exactly zero. That matters more than it looks,
+because the optimizer is Adam: it normalises each weight's step by that weight's
+own gradient magnitude, so what reaches a weight is close to the *sign* of its
+gradient rather than its size. That property is what made the single-stage task
+trainable at all, and its sharp edge is that a population with a nonzero resting
+rate is slightly positive in every empty window, so every act that lands in one
+nudges its weight down by a consistent trickle that Adam then scales up to a
+full step.
+
+Centring is on for the voyage and off for the single-stage task, so the
+committed single-stage checkpoint is untouched. It was not, on its own, enough
+to rescue cooking — the window was the real problem — and it is kept because it
+is the correct preprocessing either way.
+
+### Running it
+
+```bash
+python3 run.py voyage                       # train the four heads
+node fishing/train-voyage.mjs --heads shared   # the comparison row
+python3 run.py record-voyage --episode 38   # write the replay pair
+```
+
+`run.py record` and `run.py record-voyage` both write
+`web/public/recordings/index.json`, so whichever ran last is the demo the viewer
+plays; the page takes its wording from that file's `kind`.
+
 ## What is in this commit, and what is not
 
 Present:
 
 - bites and decoys, the task, the scoring, the re-cast
+- the five-stage voyage, its chained event counts, and per-stage scoring
 - the response cache, the splice, and its measured residual per event type
-- the REINFORCE readout, checkpoints, and the learning curve
-- four baselines: oracle, fixed delay after the dip, fixed interval, and a
-  rate-matched random control
+- the REINFORCE readout, checkpoints, and the learning curve, in both the
+  single-shared-readout and four-heads shapes
+- baselines for both tasks: oracle, fixed delay after the dip, fixed interval,
+  reflex, and a rate-matched random control
+- the connectome ablation: weights shuffled, populations randomized
 - the real NeuroMechFly body, converted to GLB, with a labelled placeholder
   when the GLB has not been generated
-- the replay viewer, two recordings side by side
+- the replay viewer, two recordings side by side, with the boat, the jetty and
+  the fire staged per voyage stage
+- live mode: the sim streams frames over a local WebSocket on a documented
+  schema, and the viewer interpolates them to 60 fps
 
 Not yet, and each is a named next step rather than a silent omission:
 
-- **Live mode.** A WebSocket from the Python side, with a documented schema.
-  Replay mode is all that ships here, which is also what lets `web/` deploy as a
-  static site with no backend.
 - **A live-sim validation column.** The results above are measured on spliced
-  cache episodes. Running whole episodes against the live network to confirm the
-  splice end to end is the check that has not been done yet.
+  cache episodes. `tools/validate-cache` runs whole episodes against the live
+  network, but its output is not yet a column in the results tables.
 - **Overlapping pulse amplitudes.** Drawing each event's amplitude from ranges
   that overlap, instead of using two fixed values, is what would make the
   bite-versus-decoy call genuinely hard. See the determinism measurement above
   for why the current version is not.
+- **A voyage ablation.** The shuffled-connectome arms were run against the
+  single-stage task only. Re-running them across the five stages would say
+  whether the wiring matters more for some stages than others, and the response
+  time courses above suggest it should.
+- **The demo recording.** The slot near the top of this file is still empty.
 
 ## The fly model
 

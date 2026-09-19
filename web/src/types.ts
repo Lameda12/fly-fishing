@@ -99,6 +99,8 @@ export interface ReplayIndex {
   schemaVersion: 2;
   generatedAt: string;
   seed: number;
+  /** Which demo was recorded last: the single-stage fishing task, or the voyage. */
+  kind?: "fishing" | "voyage";
   recordings: { file: string; label: string; policy: string; summary: ReplaySummary }[];
 }
 

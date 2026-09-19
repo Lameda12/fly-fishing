@@ -106,6 +106,21 @@ async function startReplay(): Promise<void> {
   }
 
   const first = replays[0]!;
+  // The two recorders share one index, so the page takes its wording from
+  // whichever demo was recorded last rather than hard-coding the fishing one.
+  if (index.kind === "voyage") {
+    byId("tagline").textContent =
+      "A frozen connectome, four trained readout heads, and a five-stage voyage";
+    byId("note").textContent =
+      "Both panels play the same voyage: bait the hook, fish, row back, cook the catch, eat. " +
+      "They see the same schedule, so the difference between them is the policy and nothing " +
+      "else. The connectome is frozen; what was trained is one linear readout per decision " +
+      "stage, from eight descending-neuron rates to act-or-wait. The fly does not learn to " +
+      "fish, cook or eat. Which stage the voyage is in comes from its clock, not from the fly. " +
+      "The boat, the jetty, the fire, the water and the bobber are drawn; the body is the real " +
+      "NeuroMechFly model at its neutral pose. What comes out of the simulation is the rate the " +
+      "HUD prints and the timing everything runs on.";
+  }
   byId("seed").textContent = String(index.seed);
   byId("sim").textContent =
     `${first.simulator.neurons.toLocaleString("en-US")} neurons, ${first.simulator.dataset}`;

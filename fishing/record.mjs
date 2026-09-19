@@ -222,6 +222,9 @@ async function main() {
     schemaVersion: REPLAY_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
     seed,
+    // Both recorders write this one index, so the last one run is the demo the
+    // viewer plays; `kind` is how the page knows which copy to show.
+    kind: "fishing",
     recordings: written.map(({ target, replay }) => ({
       file: path.basename(target),
       label: replay.label,
