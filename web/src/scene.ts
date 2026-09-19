@@ -13,15 +13,24 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { FlyModel } from "./fly";
+import { buildBoat, buildCampfire, updateCampfire, updateOars } from "./props";
 
 const WATER_SIZE = 90;
 const BOBBER_DISTANCE = 13;
 const BOBBER_DIP_DEPTH = 1.5;
 /** Where the line leaves the rod, in the fly anchor's frame. */
 const ROD_TIP = new THREE.Vector3(3.0, 0.45, 2.5);
-/** The default framing: fly on the left, bobber on the right, both in shot. */
-const ORBIT_POSITION = new THREE.Vector3(-6.5, -21.5, 7.2);
-const ORBIT_TARGET = new THREE.Vector3(4.4, 0, 1.1);
+/** The default framing: jetty on the left, fishing ground on the right. */
+const ORBIT_POSITION = new THREE.Vector3(-7, -25, 9);
+const ORBIT_TARGET = new THREE.Vector3(2, 0, 1.1);
+/** Where the boat sits at each end of its run. Scripted staging. */
+const MOORED = new THREE.Vector3(-6.2, -5.2, 0);
+const FISHING = new THREE.Vector3(5.5, 0.4, 0);
+/** Where the fire sits on the jetty, and where the fly stands to use it. */
+const FIRE_AT = new THREE.Vector3(-5.6, 1.4, 1.84);
+const FIRE_SEAT = new THREE.Vector3(-3.6, 1.2, 1.84);
+/** The fly's seat in the boat, in the hull's own frame. */
+const SEAT = new THREE.Vector3(0.7, 0, -0.3);
 
 /** A pooled splash droplet. */
 interface Droplet {
@@ -33,8 +42,8 @@ interface Droplet {
 function waterMaterial(): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({
     color: 0x27616e,
-    roughness: 0.22,
-    metalness: 0.22,
+    roughness: 0.3,
+    metalness: 0.14,
     transparent: true,
     opacity: 0.94,
   });
@@ -195,8 +204,17 @@ export class PondScene {
   private readonly controls: OrbitControls;
   private readonly water: THREE.Mesh;
   private readonly waterUniforms: { uTime: { value: number } };
-  /** The dock perch. Whatever body is in use hangs off this. */
+  /** The fly's perch. Rides in the boat, so the body moves with it. */
   private readonly flyAnchor: THREE.Group;
+  private readonly boat: THREE.Group;
+  private readonly rod: THREE.Mesh;
+  private readonly campfire: THREE.Group;
+  /** Where the boat is, 0 at the jetty and 1 out on the fishing ground. */
+  private boatOut = 0;
+  private fireHeat = 0;
+  private oarStroke = 0;
+  private flyAtFire = false;
+  private readonly flyTarget = new THREE.Vector3();
   private placeholder: THREE.Group | null;
   private body: FlyModel | null = null;
   private readonly bobber: THREE.Group;
@@ -251,7 +269,7 @@ export class PondScene {
     this.scene.add(key);
     // Kept dim and high: a bright, low rim light reflects off the water as a
     // blown-out hotspot at grazing camera angles.
-    const rim = new THREE.DirectionalLight(0x8fd4e8, 0.4);
+    const rim = new THREE.DirectionalLight(0x8fd4e8, 0.26);
     rim.position.set(24, 16, 20);
     this.scene.add(rim);
 
@@ -269,11 +287,22 @@ export class PondScene {
     this.scene.add(bed);
 
     this.scene.add(buildDock());
+    // The fly rides in the boat, so its perch is a child of the hull rather
+    // than of the scene: moving the boat moves the fly, the rod and the line.
+    this.boat = buildBoat();
+    this.scene.add(this.boat);
+    this.rod = buildRod();
+    // The fly is placed each frame rather than parented, because it rides the
+    // boat for three stages and then stands at the fire for two.
     this.flyAnchor = new THREE.Group();
-    this.flyAnchor.position.set(-2.2, 0, 1.95);
     this.placeholder = buildFlyPlaceholder();
-    this.flyAnchor.add(this.placeholder, buildRod());
+    this.flyAnchor.add(this.placeholder, this.rod);
     this.scene.add(this.flyAnchor);
+    this.flyAnchor.position.copy(MOORED).add(SEAT);
+
+    this.campfire = buildCampfire();
+    this.campfire.position.copy(FIRE_AT);
+    this.scene.add(this.campfire);
     this.bobber = buildBobber();
     this.scene.add(this.bobber);
 
@@ -336,7 +365,7 @@ export class PondScene {
   setCameraMode(mode: "orbit" | "closeup"): void {
     this.cameraMode = mode;
     if (mode === "closeup") {
-      const fly = this.flyAnchor.position;
+      const fly = this.flyAnchor.getWorldPosition(new THREE.Vector3());
       this.controls.target.set(fly.x + 0.4, fly.y, fly.z + 0.4);
       this.controls.minDistance = 2;
       this.controls.maxDistance = 16;
@@ -357,6 +386,33 @@ export class PondScene {
   /** A live stream of this panel's canvas, for the webm export. */
   captureStream(fps = 60): MediaStream {
     return this.renderer.domElement.captureStream(fps);
+  }
+
+  /**
+   * Place the voyage: how far out the boat is, and whether the fire is lit.
+   *
+   * Both are scripted staging. `out` is 0 at the jetty and 1 on the fishing
+   * ground; `heat` fades the fire in for the cooking and eating stages.
+   */
+  setVoyage({
+    out,
+    heat,
+    bobberVisible,
+    rowing = 0,
+    atFire = false,
+  }: {
+    out: number;
+    heat: number;
+    bobberVisible: boolean;
+    rowing?: number;
+    atFire?: boolean;
+  }): void {
+    this.boatOut = out;
+    this.fireHeat = heat;
+    this.oarStroke = rowing;
+    this.flyAtFire = atFire;
+    this.bobber.visible = bobberVisible;
+    this.line.visible = bobberVisible;
   }
 
   resize(): void {
@@ -403,12 +459,34 @@ export class PondScene {
 
     // A drawn idle, not a gait: the body's legs hold the model's neutral pose
     // because the task does not involve walking.
-    this.flyAnchor.position.z = 1.95 + Math.sin(idlePhase) * 0.05;
+    this.flyAnchor.position.z += Math.sin(idlePhase) * 0.02;
     this.flyAnchor.rotation.y = Math.sin(idlePhase * 0.5) * 0.02;
+    this.flyAnchor.rotation.z = this.flyAtFire ? Math.PI * 0.62 : this.boat.rotation.z;
+
+    // The boat rides the swell and rocks a little; both are drawn.
+    this.boat.position.lerpVectors(MOORED, FISHING, this.boatOut);
+    // Freeboard: the hull is a bowl, so it has to ride high enough that its
+    // side shows above the water plane or it reads as a raft.
+    this.boat.position.z = 0.55 + Math.sin(elapsedSeconds * 1.9) * 0.08;
+    this.boat.rotation.z = Math.atan2(FISHING.y - MOORED.y, FISHING.x - MOORED.x) * this.boatOut;
+    this.boat.rotation.y = Math.sin(elapsedSeconds * 1.4) * 0.03;
+    this.boat.rotation.x = Math.sin(elapsedSeconds * 2.3 + 1) * 0.035;
+
+    // The fly rides the boat, then steps onto the jetty to cook and eat. Eased
+    // rather than snapped, so the change of stage reads as a move.
+    if (this.flyAtFire) this.flyTarget.copy(FIRE_SEAT);
+    else this.flyTarget.copy(SEAT).applyQuaternion(this.boat.quaternion).add(this.boat.position);
+    this.flyAnchor.position.lerp(this.flyTarget, 1 - Math.exp(-dt / 0.35));
+    this.rod.visible = !this.flyAtFire;
+
+    updateOars(this.boat, elapsedSeconds, this.oarStroke);
+    this.campfire.visible = this.fireHeat > 0.01;
+    if (this.campfire.visible) updateCampfire(this.campfire, elapsedSeconds, this.fireHeat);
 
     // The line hangs from the rod tip to the bobber with a little sag, and the
     // sag tightens as the bobber is pulled under.
-    const from = ROD_TIP.clone().add(this.flyAnchor.position);
+    this.flyAnchor.updateMatrixWorld();
+    const from = this.flyAnchor.localToWorld(ROD_TIP.clone());
     const to = this.bobber.position.clone().setZ(this.bobber.position.z + 0.35);
     const sag = 0.85 * (1 - dip);
     for (let i = 0; i < this.linePoints.length; i++) {

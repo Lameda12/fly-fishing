@@ -42,6 +42,16 @@ export interface ReplayFrames {
   bobber: number[];
 }
 
+/** One stage of a voyage, as the recorder writes it. */
+export interface ReplayStage {
+  id: "prep" | "fish" | "row" | "cook" | "eat";
+  name: string;
+  startMs: number;
+  durationMs: number;
+  /** False for the row back, which is transit and scores nothing. */
+  decision: boolean;
+}
+
 export interface Replay {
   schemaVersion: 2;
   kind: "fly-fishing-replay";
@@ -65,6 +75,8 @@ export interface Replay {
   events: ReplayEvent[];
   outcomes: ReplayOutcome[];
   frames: ReplayFrames;
+  /** Present on a voyage recording; absent on a single-stage fishing one. */
+  stages?: ReplayStage[];
   provenance: {
     simulated: string[];
     scripted: string[];

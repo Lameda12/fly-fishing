@@ -6,6 +6,37 @@
 
 import { recordStream, supportedMimeType } from "./capture";
 import { PondScene } from "./scene";
+import type { ReplayStage } from "./types";
+
+/**
+ * Where the boat is and whether the fire is lit, for a moment in a voyage.
+ *
+ * Entirely staging: it says where to draw things, and nothing here is read back
+ * into the simulation. `progress` is how far through its own stage the clock is.
+ */
+function staging(stage: ReplayStage["id"], progress: number) {
+  const ramp = (t: number) => Math.min(1, Math.max(0, t));
+  switch (stage) {
+    case "prep":
+      return { out: 0, heat: 0, bobberVisible: false };
+    case "fish":
+      // Row out over the first fifth of the stage, then sit and fish.
+      return {
+        out: ramp(progress / 0.2),
+        heat: 0,
+        bobberVisible: progress > 0.15,
+        rowing: progress < 0.2 ? 1 : 0,
+      };
+    case "row":
+      return { out: 1 - ramp(progress), heat: 0, bobberVisible: false, rowing: 1 };
+    case "cook":
+      return { out: 0, heat: ramp(progress / 0.25), bobberVisible: false, atFire: true };
+    case "eat":
+      return { out: 0, heat: 1, bobberVisible: false, atFire: true };
+    default:
+      return { out: 1, heat: 0, bobberVisible: true };
+  }
+}
 import type { Replay } from "./types";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -22,6 +53,7 @@ interface Hud {
   hookBar: HTMLElement;
   decoys: HTMLElement;
   body: HTMLElement;
+  stage: HTMLElement;
   flash: HTMLElement;
 }
 
@@ -34,6 +66,7 @@ function buildHud(container: HTMLElement, replay: Replay): Hud {
       <span>${replay.provenance.trained}</span>
       <span data-body class="body-note">loading body</span>
     </div>
+    <div class="hud-stage" data-stage></div>
     <div class="hud-counts">
       <div class="count"><b data-caught>0</b><span>caught</span></div>
       <div class="count snap"><b data-snapped>0</b><span>snapped</span></div>
@@ -70,6 +103,7 @@ function buildHud(container: HTMLElement, replay: Replay): Hud {
     hookBar: pick("hook-bar"),
     decoys: pick("decoys"),
     body: pick("body"),
+    stage: pick("stage"),
     flash,
   };
 }
@@ -152,6 +186,7 @@ export class Player {
       this.hud.flash.style.opacity = String(this.flashLife * 0.55);
     }
 
+    this.applyStaging(episodeMs);
     this.pond.update(this.elapsedSeconds, dt, dip, this.elapsedSeconds * 7.5);
     this.paint(index);
   }
@@ -200,6 +235,27 @@ export class Player {
         record.setAttribute("aria-pressed", "false");
       });
     });
+  }
+
+  /**
+   * Place the boat and the fire for wherever the voyage clock is.
+   *
+   * A single-stage fishing recording carries no stages, and then the boat just
+   * sits on the fishing ground with the line out, which is what that task is.
+   */
+  private applyStaging(episodeMs: number): void {
+    const stages = this.replay.stages;
+    if (!stages?.length) {
+      this.pond.setVoyage({ out: 1, heat: 0, bobberVisible: true });
+      this.hud.stage.textContent = "";
+      return;
+    }
+    let current = stages[0]!;
+    for (const stage of stages) if (episodeMs >= stage.startMs) current = stage;
+    const progress = Math.min(1, (episodeMs - current.startMs) / current.durationMs);
+    this.pond.setVoyage(staging(current.id, progress));
+    this.hud.stage.textContent = current.name;
+    this.hud.stage.classList.toggle("transit", !current.decision);
   }
 
   /**

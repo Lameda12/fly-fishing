@@ -112,6 +112,8 @@ async function startReplay(): Promise<void> {
 
   const panels = byId("panels");
   panels.replaceChildren();
+  // One recording fills the width; two sit side by side for the comparison.
+  panels.classList.toggle("single", replays.length === 1);
   const players = replays.map((replay) => {
     const panel = document.createElement("section");
     panel.className = "panel";

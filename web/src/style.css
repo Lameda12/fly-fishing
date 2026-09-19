@@ -46,6 +46,14 @@ button { font: inherit; color: inherit; }
 .hud-head strong { font-size: 14px; font-weight: 500; }
 .hud-head span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
 .hud-head .body-note { color: #7d8a85; font-size: 9.5px; }
+.hud-stage {
+  margin-top: 8px; padding: 4px 8px; border-radius: 4px;
+  background: rgba(98, 196, 141, 0.14); border: 1px solid rgba(98, 196, 141, 0.4);
+  color: var(--green); font-size: 11px; font-weight: 500;
+}
+.hud-stage:empty { display: none; }
+.hud-stage.transit { background: rgba(156, 168, 163, 0.12); border-color: rgba(156, 168, 163, 0.35); color: var(--muted); }
+
 .hud-counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 9px; }
 .count b { display: block; font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--green); }
 .count.snap b { color: var(--red); }
