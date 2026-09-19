@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-19T00:33:31.506Z",
+  "seed": 1592594996,
+  "episodes": 1000,
+  "evaluatedOn": "spliced cache episodes",
+  "cache": {
+    "ablation": "none",
+    "seed": 1592594996,
+    "generatedAt": "2026-09-19T00:28:51.482Z"
+  },
+  "readout": {
+    "runSeed": 1592594996,
+    "episodes": 600
+  },
+  "rows": [
+    {
+      "label": "Oracle (hooks on true bites)",
+      "policy": "oracle",
+      "catchRate": 1,
+      "decoyHookRate": 0,
+      "falseHooksPerMinute": 0,
+      "hookPrecision": 1,
+      "meanReward": 5.965
+    },
+    {
+      "label": "Trained readout (greedy)",
+      "policy": "readoutGreedy",
+      "catchRate": 1,
+      "decoyHookRate": 0,
+      "falseHooksPerMinute": 0,
+      "hookPrecision": 1,
+      "meanReward": 5.965
+    },
+    {
+      "label": "Fixed delay after the bobber dips",
+      "policy": "dipDelay",
+      "catchRate": 1,
+      "decoyHookRate": 1,
+      "falseHooksPerMinute": 5.979,
+      "hookPrecision": 0.4989,
+      "meanReward": 2.975
+    },
+    {
+      "label": "Fixed interval, every 5 s",
+      "policy": "fixedInterval",
+      "catchRate": 0.0892,
+      "decoyHookRate": 0.0874,
+      "falseHooksPerMinute": 10.471,
+      "hookPrecision": 0.0481,
+      "meanReward": -4.707
+    },
+    {
+      "label": "Random control (rate matched)",
+      "policy": "random",
+      "catchRate": 0.0411,
+      "decoyHookRate": 0.0413,
+      "falseHooksPerMinute": 4.942,
+      "hookPrecision": 0.0464,
+      "meanReward": -2.205
+    }
+  ],
+  "spliceResidual": {
+    "bite": [
+      {
+        "feature": "forward_odn1",
+        "baselineHz": 2.16,
+        "responseTailHz": 1.83,
+        "residualHz": -0.34
+      },
+      {
+        "feature": "walk_dnp09",
+        "baselineHz": 40.11,
+        "responseTailHz": 35.74,
+        "residualHz": -4.37
+      },
+      {
+        "feature": "turn_left",
+        "baselineHz": 0.24,
+        "responseTailHz": 0.02,
+        "residualHz": -0.22
+      },
+      {
+        "feature": "turn_right",
+        "baselineHz": 2.1,
+        "responseTailHz": 1.85,
+        "residualHz": -0.25
+      },
+      {
+        "feature": "reverse_mdn",
+        "baselineHz": 0,
+        "responseTailHz": 0,
+        "residualHz": 0
+      },
+      {
+        "feature": "groom_adn1",
+        "baselineHz": 0,
+        "responseTailHz": 0,
+        "residualHz": 0
+      },
+      {
+        "feature": "escape_giant_fiber",
+        "baselineHz": 0,
+        "responseTailHz": 0,
+        "residualHz": 0
+      },
+      {
+        "feature": "feed_mn9",
+        "baselineHz": 0,
+        "responseTailHz": 0,
+        "residualHz": 0
+      }
+    ],
+    "decoy": [
+      {
+        "feature": "forward_odn1",
+        "baselineHz": 2.16,
+        "responseTailHz": 2.5,
+        "residualHz": 0.33
+      },
+      {
+        "feature": "walk_dnp09",
+        "baselineHz": 40.11,
+        "responseTailHz": 38.51,
+        "residualHz": -1.6
+      },
+      {
+        "feature": "turn_left",
+        "baselineHz": 0.24,
+        "responseTailHz": 0.28,
+        "residualHz": 0.05
+      },
+      {
+        "feature": "turn_right",
+        "baselineHz": 2.1,
+        "responseTailHz": 2.62,
+        "residualHz": 0.52
+      },
+      {
+        "feature": "reverse_mdn",
+        "baselineHz": 0,
+        "responseTailHz": 0,
+        "residualHz": 0
+      },
+      {
+        "feature": "groom_adn1",
+        "baselineHz": 0,
+        "responseTailHz": 0,
+        "residualHz": 0
+      },
+      {
+        "feature": "escape_giant_fiber",
+        "baselineHz": 0,
+        "responseTailHz": 0,
+        "residualHz": 0
+      },
+      {
+        "feature": "feed_mn9",
+        "baselineHz": 0,
+        "responseTailHz": 0,
+        "residualHz": 0
+      }
+    ]
+  },
+  "weights": [
+    {
+      "feature": "forward_odn1_t",
+      "weight": 6.6514
+    },
+    {
+      "feature": "walk_dnp09_t",
+      "weight": -2.4114
+    },
+    {
+      "feature": "turn_left_t",
+      "weight": 0.5885
+    },
+    {
+      "feature": "turn_right_t",
+      "weight": -3.6973
+    },
+    {
+      "feature": "reverse_mdn_t",
+      "weight": 6.9138
+    },
+    {
+      "feature": "groom_adn1_t",
+      "weight": 0
+    },
+    {
+      "feature": "escape_giant_fiber_t",
+      "weight": 1.3966
+    },
+    {
+      "feature": "feed_mn9_t",
+      "weight": 0
+    },
+    {
+      "feature": "forward_odn1_t-1",
+      "weight": 6.5789
+    },
+    {
+      "feature": "walk_dnp09_t-1",
+      "weight": -2.224
+    },
+    {
+      "feature": "turn_left_t-1",
+      "weight": 2.0193
+    },
+    {
+      "feature": "turn_right_t-1",
+      "weight": -2.7294
+    },
+    {
+      "feature": "reverse_mdn_t-1",
+      "weight": 6.9661
+    },
+    {
+      "feature": "groom_adn1_t-1",
+      "weight": 0
+    },
+    {
+      "feature": "escape_giant_fiber_t-1",
+      "weight": 1.4939
+    },
+    {
+      "feature": "feed_mn9_t-1",
+      "weight": 0
+    },
+    {
+      "feature": "bias",
+      "weight": -7.5838
+    }
+  ],
+  "provenance": {
+    "frozen": "The connectome. Nothing inside the simulator is trained.",
+    "trained": "17 linear readout weights, by REINFORCE.",
+    "scripted": "The task, the schedule, all scoring, and every baseline in this table.",
+    "simulated": "Every descending and motor readout rate the policies are scored from.",
+    "disclaimer": "These are properties of this code and its hand-designed sensory interfaces. They are not biological measurements and the fly does not learn to fish."
+  }
+}

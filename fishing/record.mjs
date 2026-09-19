@@ -140,6 +140,7 @@ export function buildReplay({ cache, seed, policyKind, label, readout = null, ta
 
 const OPTIONS = {
   seed: { type: "string", default: "1592594996" },
+  episode: { type: "string", default: "4" },
   cache: { type: "string" },
   readout: { type: "string" },
   out: { type: "string" },
@@ -148,7 +149,8 @@ const OPTIONS = {
 
 const USAGE = `Usage: node fishing/record.mjs [options]
 
-  --seed N       run seed (default 1592594996); picks the recorded episode
+  --seed N       run seed (default 1592594996)
+  --episode N    which held-out episode to record (default 4)
   --cache PATH   default results/dn-cache.json
   --readout PATH default results/readout.json
   --out DIR      default web/public/recordings
@@ -193,9 +195,16 @@ async function main() {
   }
   const readout = createReadout({ weights: checkpoint.readout.weights });
 
-  // The recorded episode is a held-out one, so the demo shows the readout on a
-  // schedule it was never trained against.
-  const seed = evalSeeds(runSeed, 1)[0];
+  // A held-out episode, so the demo shows the readout on a schedule it was never
+  // trained against. Which one is a presentation choice: the default is picked
+  // for having a reasonable number of events rather than for its score, and any
+  // --episode gives the same numbers the baselines table reports on average.
+  const episodeIndex = Number.parseInt(values.episode, 10);
+  const seed = evalSeeds(runSeed, episodeIndex + 1)[episodeIndex];
+  if (seed === undefined) {
+    process.stderr.write(`no held-out episode ${episodeIndex}\n`);
+    return 1;
+  }
 
   await mkdir(outDir, { recursive: true });
   const written = [];

@@ -100,57 +100,67 @@ function panel({ x, y, width, height, title, xs, series, yMax, yTicks = 4, xLabe
 }
 
 /**
- * The learning curve: catch rate and false-hook rate against episode, with the
- * oracle and the rate-matched random control drawn in as reference lines.
+ * The learning curve: catch rate, decoys hooked, and false-hook rate against
+ * training episode, with the relevant baseline drawn in on each.
+ *
+ * Catch rate alone would flatter the readout, because the dip-delay baseline
+ * also catches every fish. The middle panel is the one that separates them.
  */
 export function learningCurveSvg({ points, reference = {}, title, subtitle }) {
   const width = 860;
-  const height = 620;
-  const plotX = 64;
+  const panelHeight = 168;
+  const gap = 56;
+  const top = 96;
+  const height = top + 3 * panelHeight + 2 * gap + 48;
+  const plotX = 68;
   const plotWidth = width - plotX - 28;
   const xs = points.map((p) => p.episode);
+  const line = (key, color) => ({
+    label: "trained readout (greedy eval)",
+    values: points.map((point) => point[key] ?? Number.NaN),
+    color,
+  });
+  const ref = (value, label, color) =>
+    value === undefined ? [] : [{ label, constant: value, color }];
 
   const body = [
     panel({
       x: plotX,
-      y: 68,
+      y: top,
       width: plotWidth,
-      height: 210,
-      title: "Catch rate (fish caught / bites)",
+      height: panelHeight,
+      title: "Catch rate (fish caught / real bites)",
       xs,
       yMax: 1,
       series: [
-        { label: "trained readout (greedy eval)", values: points.map((p) => p.catchRate) },
-        ...(reference.oracleCatchRate !== undefined
-          ? [{ label: "oracle", constant: reference.oracleCatchRate, color: PALETTE.series[2] }]
-          : []),
-        ...(reference.randomCatchRate !== undefined
-          ? [{ label: "random control", constant: reference.randomCatchRate, color: PALETTE.series[3] }]
-          : []),
+        line("catchRate", PALETTE.series[0]),
+        ...ref(reference.oracleCatchRate, "oracle and dip-delay", PALETTE.series[2]),
+        ...ref(reference.randomCatchRate, "random control", PALETTE.series[3]),
       ],
     }),
     panel({
       x: plotX,
-      y: 360,
+      y: top + panelHeight + gap,
       width: plotWidth,
-      height: 210,
-      title: "False-hook rate (snapped lines per minute)",
+      height: panelHeight,
+      title: "Decoys hooked (the discrimination; lower is better)",
+      xs,
+      yMax: 1,
+      series: [
+        line("decoyHookRate", PALETTE.series[1]),
+        ...ref(reference.dipDelayDecoyHookRate, "fixed delay after the dip", PALETTE.series[3]),
+      ],
+    }),
+    panel({
+      x: plotX,
+      y: top + 2 * (panelHeight + gap),
+      width: plotWidth,
+      height: panelHeight,
+      title: "Snapped lines per minute",
       xs,
       series: [
-        {
-          label: "trained readout (greedy eval)",
-          values: points.map((p) => p.falseHooksPerMinute),
-          color: PALETTE.series[1],
-        },
-        ...(reference.randomFalseHooksPerMinute !== undefined
-          ? [
-              {
-                label: "random control",
-                constant: reference.randomFalseHooksPerMinute,
-                color: PALETTE.series[3],
-              },
-            ]
-          : []),
+        line("falseHooksPerMinute", PALETTE.series[2]),
+        ...ref(reference.randomFalseHooksPerMinute, "random control", PALETTE.series[3]),
       ],
       xLabel: "training episode",
     }),
@@ -158,8 +168,8 @@ export function learningCurveSvg({ points, reference = {}, title, subtitle }) {
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
   <rect width="${width}" height="${height}" fill="${PALETTE.bg}"/>
-  <text x="${plotX}" y="32" fill="${PALETTE.ink}" font-size="16">${escape(title)}</text>
-  <text x="${plotX}" y="50" fill="${PALETTE.muted}" font-size="11">${escape(subtitle)}</text>
+  <text x="${plotX}" y="34" fill="${PALETTE.ink}" font-size="16">${escape(title)}</text>
+  <text x="${plotX}" y="56" fill="${PALETTE.muted}" font-size="11">${escape(subtitle)}</text>
   ${body.join("\n  ")}
 </svg>
 `;

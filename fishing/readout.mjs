@@ -96,16 +96,34 @@ export function rewardsToGo(rewards, gamma = 0.9) {
  * reward-to-go minus a running mean baseline, then scaled by its own standard
  * deviation so the step size does not depend on how good the episode was in
  * absolute terms.
+ *
+ * **The step is Adam, and that is load-bearing rather than fashionable.** The
+ * features here are wildly unequal in how often they are on: the bias is 1 in
+ * every window, while `escape_giant_fiber` is nonzero in roughly a tenth of
+ * them, around a fish event. Under a plain SGD step the bias therefore collects
+ * about ten times the gradient the informative feature does, drives itself to
+ * about -7 within a couple of hundred episodes, and takes P(hook) to ~0.001
+ * everywhere. Exploration stops and nothing is ever learned again: measured on
+ * this cache, 600 episodes of plain SGD ended at a 0% catch rate with the right
+ * signs on every weight and no magnitude on any of them. Adam gives each weight
+ * a step scaled by its own gradient history, so a feature that is only
+ * occasionally active still moves.
  */
 export function createTrainer({
   readout,
-  learningRate = 0.5,
+  learningRate = 0.05,
   gamma = 0.9,
   baselineDecay = 0.9,
+  beta1 = 0.9,
+  beta2 = 0.999,
+  epsilon = 1e-8,
 } = {}) {
   let baseline = 0;
   let seen = 0;
+  let steps = 0;
   const grad = new Float64Array(FEATURE_COUNT);
+  const moment1 = new Float64Array(FEATURE_COUNT);
+  const moment2 = new Float64Array(FEATURE_COUNT);
 
   return {
     get baseline() {
@@ -133,11 +151,19 @@ export function createTrainer({
         const coefficient = (action - probability) * (advantages[i] / scale);
         for (let f = 0; f < FEATURE_COUNT; f++) grad[f] += coefficient * features[f];
       }
+      steps++;
+      const correction1 = 1 - beta1 ** steps;
+      const correction2 = 1 - beta2 ** steps;
       let gradNorm = 0;
       for (let f = 0; f < FEATURE_COUNT; f++) {
         grad[f] /= decisions.length;
         gradNorm += grad[f] * grad[f];
-        readout.weights[f] += learningRate * grad[f];
+        moment1[f] = beta1 * moment1[f] + (1 - beta1) * grad[f];
+        moment2[f] = beta2 * moment2[f] + (1 - beta2) * grad[f] * grad[f];
+        const step =
+          (moment1[f] / correction1) / (Math.sqrt(moment2[f] / correction2) + epsilon);
+        // Ascent: the gradient above is of the expected return, not of a loss.
+        readout.weights[f] += learningRate * step;
       }
       return {
         gradNorm: Math.sqrt(gradNorm),

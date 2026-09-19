@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-19T00:32:09.996Z",
+  "runSeed": 1592594996,
+  "episodes": 600,
+  "learningRate": 0.05,
+  "gamma": 0.9,
+  "cache": {
+    "ablation": "none",
+    "seed": 1592594996,
+    "generatedAt": "2026-09-19T00:28:51.482Z"
+  },
+  "readout": {
+    "featureNames": [
+      "forward_odn1_t",
+      "walk_dnp09_t",
+      "turn_left_t",
+      "turn_right_t",
+      "reverse_mdn_t",
+      "groom_adn1_t",
+      "escape_giant_fiber_t",
+      "feed_mn9_t",
+      "forward_odn1_t-1",
+      "walk_dnp09_t-1",
+      "turn_left_t-1",
+      "turn_right_t-1",
+      "reverse_mdn_t-1",
+      "groom_adn1_t-1",
+      "escape_giant_fiber_t-1",
+      "feed_mn9_t-1",
+      "bias"
+    ],
+    "rateScale": 100,
+    "weights": [
+      6.651395897766026,
+      -2.411364958088875,
+      0.5885414758046115,
+      -3.6973168537981125,
+      6.913765947770912,
+      0,
+      1.3966330604818433,
+      0,
+      6.578850908412167,
+      -2.224024302771764,
+      2.019306374133815,
+      -2.7293506581234657,
+      6.966112845646338,
+      0,
+      1.4938635589822171,
+      0,
+      -7.58379610403105
+    ]
+  },
+  "heldOut": {
+    "episodes": 24,
+    "catchRate": 1,
+    "decoyHookRate": 0,
+    "falseHooksPerMinute": 0,
+    "hookPrecision": 1,
+    "meanReward": 6.292
+  },
+  "frozen": "The connectome, its weights, the LIF constants and upstream's stimulus and readout interfaces. Nothing inside the simulator is trained, and no claim is made that the fly learns anything.",
+  "trained": "17 linear readout weights, by REINFORCE."
+}

@@ -26,7 +26,7 @@ const OPTIONS = {
   episodes: { type: "string", default: "600" },
   "eval-every": { type: "string", default: "20" },
   "eval-episodes": { type: "string", default: "24" },
-  "learning-rate": { type: "string", default: "0.5" },
+  "learning-rate": { type: "string", default: "0.05" },
   gamma: { type: "string", default: "0.9" },
   cache: { type: "string" },
   out: { type: "string" },
@@ -40,7 +40,7 @@ const USAGE = `Usage: node fishing/train.mjs [options]
   --episodes N         training episodes (default 600)
   --eval-every N       evaluate every N episodes (default 20)
   --eval-episodes N    held-out episodes per evaluation (default 24)
-  --learning-rate F    REINFORCE step size (default 0.5)
+  --learning-rate F    Adam step size (default 0.05)
   --gamma F            reward-to-go discount (default 0.9)
   --cache PATH         default results/dn-cache.json
   --out DIR            default results/

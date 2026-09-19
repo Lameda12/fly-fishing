@@ -137,9 +137,29 @@ looming input, as the raw `escape_giant_fiber` rate:
 | `escape_giant_fiber` out (Hz) | 0.0 | 45.5 | 67.4 | 110.1 | 134.7 | 160.0 | 177.4 | 199.0 | 218.1 |
 
 Monotone across the whole range. Pulse amplitude survives into the readout,
-which is what the decoy discrimination runs on: a 150 Hz bite peaks the giant
-fiber near 199 Hz and a 60 Hz decoy near 160 Hz. A 39 Hz gap, against whatever
-trial-to-trial spread the network has, is the entire signal available.
+which is what the decoy discrimination runs on.
+
+**And the response is very nearly deterministic, which makes that
+discrimination easy.** Measured over the sixteen recorded bite responses in the
+shipped cache, the peak `escape_giant_fiber` rate is **186.1 Hz with a standard
+deviation of 3.0 Hz** (range 178.7 to 192.5). The baseline rate on that same
+population is exactly 0.0 Hz with zero variance, because nothing else in the
+network drives it. A decoy's peak sits well clear of the bite's, and the gap is
+many standard deviations wide.
+
+So the honest reading of the decoy result below is: **the readout is thresholding
+a clean, almost noise-free signal, not solving a hard perceptual
+discrimination.** The network is a deterministic LIF simulation whose only
+stochasticity is the Poisson input drive, and at these population sizes that
+averages out. What remains genuinely non-trivial in the task is the timing (hook
+inside 500 ms), not falling for the 40 Hz walking background (`walk_dnp09` has a
+standard deviation of 8.95 Hz and peaks at 80.9 Hz, so it is the noisiest thing
+the policy sees), and not wasting the 1.5 s re-cast.
+
+The obvious way to make the discrimination itself hard is to draw each event's
+pulse amplitude from **overlapping** ranges rather than using two fixed values,
+which would put a Bayes-optimal ceiling below the oracle's. That is a named next
+step, not something claimed here.
 
 **The readout reads the raw rates, not `frame.motor`.** Upstream's normalized
 motor fields divide by 35 and clamp to 1, so `motor.escape` pins at 1.0 for any
@@ -187,12 +207,9 @@ response for exactly that reason, and `fishing/cache.mjs` reports the splice's
 own error bar: how far each feature still is from baseline where the splice
 hands back.
 
-`python3 run.py cache` prints that residual per feature at the end of the run,
-and `results/baselines.json` carries it. On the smoke run used to shake the
-pipeline out, `escape_giant_fiber` (the feature the policy actually uses)
-returned to exactly its baseline of 0 Hz before the splice point, and the
-largest residual anywhere was `walk_dnp09` at -2.6 Hz against a 39.5 Hz
-baseline.
+`python3 run.py cache` prints that residual per feature at the end of the run
+and `results/baselines.json` carries it; the measured values are in the results
+below.
 
 ### The update
 
@@ -208,38 +225,131 @@ a one-second horizon at 50 ms windows) is not for delayed reward, since hooking
 pays immediately; it is there so the policy feels the cost of the 1.5 s re-cast
 a hook commits it to.
 
+**The step is Adam, and that turned out to be load-bearing rather than
+decorative.** Under a plain SGD step this task does not train at all; the
+results section has the measurement and the reason.
+
 ## Results
 
-**Not filled in yet.** The full response cache takes about 40 minutes to record
-and this commit is the code that records it. Run
+All four policies on the same 1000 evaluation episodes, seed 1592594996:
 
-```bash
-python3 run.py            # records the cache, trains, records, reports
-```
+| Policy | Catch rate | Decoys hooked | Snapped lines / min | Hook precision | Mean reward |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Oracle (hooks on true bites) | 100.0% | 0.0% | 0.00 | 100.0% | 5.96 |
+| Trained readout (greedy) | 100.0% | 0.0% | 0.00 | 100.0% | 5.96 |
+| Fixed delay after the bobber dips | 100.0% | 100.0% | 5.98 | 49.9% | 2.98 |
+| Fixed interval, every 5 s | 8.9% | 8.7% | 10.47 | 4.8% | -4.71 |
+| Random control (rate matched) | 4.1% | 4.1% | 4.94 | 4.6% | -2.21 |
 
-and `python3 run.py report` prints the table below straight from
-`results/baselines.json`:
+![Learning curve](results/learning-curve.svg)
 
-| Policy | Catch rate | Snapped lines / min | Hook precision | Mean reward |
+**The trained readout matches the oracle exactly**, and it does so by telling a
+bite from a decoy rather than by reacting to the bobber. The comparison that
+carries the claim is the third row: fixed-delay-after-dip catches every fish
+too, but hooks every decoy doing it, which halves its reward. The readout
+catches every fish and hooks none of the decoys.
+
+The learning curve shows the order it learned in. Catch rate reaches 1.0 by
+about episode 75, and at that point it is still hooking decoys: the decoy rate
+peaks near 0.43 around episode 100 before falling to zero by episode 125. It
+learns to hook first and to discriminate second, which is what the reward
+structure asks for, since a missed fish costs 0 and a snapped line costs 0.5.
+
+### How easy is this, really
+
+Easy, and the measurement says so. Peak rates over the sixteen recorded
+realizations of each event type:
+
+| Population | Bite peak (Hz) | Decoy peak (Hz) | Baseline (Hz) | d' (bite vs decoy) |
 | --- | ---: | ---: | ---: | ---: |
-| Oracle (hooks on true bites) | | | | |
-| Trained readout (greedy) | | | | |
-| Fixed interval, every 5 s | | | | |
-| Random control (rate matched) | | | | |
+| `escape_giant_fiber` | 186.1 ± 3.0 | 150.4 ± 4.6 | 0.0 ± 0.0 | **9.1** |
+| `reverse_mdn` | 43.3 ± 5.7 | 19.0 ± 2.9 | 0.0 ± 0.0 | **5.4** |
+| `forward_odn1` | 16.9 ± 5.3 | 11.0 ± 2.3 | 2.2 ± 2.8 | 1.4 |
+| `walk_dnp09` | 65.9 ± 5.4 | 61.5 ± 4.8 | 40.1 ± 8.9 | 0.8 |
+| `turn_right` | 7.7 ± 1.8 | 8.9 ± 1.2 | 2.1 ± 2.2 | 0.8 |
+| `turn_left` | 4.1 ± 1.2 | 3.7 ± 1.5 | 0.2 ± 0.8 | 0.3 |
+| `groom_adn1` | 0.0 | 0.0 | 0.0 | - |
+| `feed_mn9` | 0.0 | 0.0 | 0.0 | - |
 
-Training also writes `results/learning-curve.svg`, which plots catch rate and
-false-hook rate against training episode with the oracle and the random control
-drawn in as reference lines.
+Two populations carry essentially all of the amplitude information, and the
+classes do not overlap on either. A 100% score against a nine-sigma separation
+is not evidence that anything clever happened; it is evidence that the readout
+found the separation, which a linear model on a separable problem should. What
+the fitted weights are *not* is a claim about which population matters most:
+with a margin this wide many weight vectors solve it, so the individual
+magnitudes below are one solution rather than the solution.
 
-On a one-trace smoke cache the readout reached the oracle's 100% catch rate with
-zero snapped lines, against 8.2% for the rate-matched random control, and the
-weights it settled on were the ones you would hope for: strongly positive on
-`escape_giant_fiber` for both the current and the lagged window, negative on
-`walk_dnp09` (the background walking drive), and a large negative bias. **That
-smoke run is not a result** and is reported here only to say what the pipeline
-does; a one-realization cache has no trial-to-trial variability in it, so the
-task it poses is easier than the real one. The numbers that go in the table
-above come from the full cache.
+| Feature | Weight |
+| --- | ---: |
+| `forward_odn1_t` | 6.65 |
+| `walk_dnp09_t` | -2.41 |
+| `turn_left_t` | 0.59 |
+| `turn_right_t` | -3.70 |
+| `reverse_mdn_t` | 6.91 |
+| `escape_giant_fiber_t` | 1.40 |
+| `forward_odn1_t-1` | 6.58 |
+| `walk_dnp09_t-1` | -2.22 |
+| `turn_left_t-1` | 2.02 |
+| `turn_right_t-1` | -2.73 |
+| `reverse_mdn_t-1` | 6.97 |
+| `escape_giant_fiber_t-1` | 1.49 |
+| `bias` | -7.58 |
+
+_(weights under 0.1 in magnitude omitted; all 17 are in results/baselines.json)_
+
+### What plain SGD does, and why the optimizer is Adam
+
+Worth recording because it was the one real failure in building this. Under a
+plain SGD step this task does not train at all: **600 episodes ended at a 0%
+catch rate.**
+
+The cause is feature sparsity, not the task. The bias feature is 1 in every one
+of the ~1170 decision windows, while `escape_giant_fiber` is nonzero only in the
+~10% of windows near a fish event. Plain SGD therefore gives the bias about ten
+times the accumulated gradient, it reaches about -7 within a couple of hundred
+episodes, P(hook) goes to roughly 0.001 everywhere, exploration stops, and
+nothing is learned after that. The signs on every weight were already correct at
+that point; none of them had any magnitude. Adam gives each weight a step scaled
+by its own gradient history, and the same run then converges by episode 125.
+
+### The splice's error bar
+
+Splice residual for a bite, response tail minus baseline:
+
+| Feature | Baseline (Hz) | Response tail (Hz) | Residual (Hz) |
+| --- | ---: | ---: | ---: |
+| `forward_odn1` | 2.16 | 1.83 | -0.34 |
+| `walk_dnp09` | 40.11 | 35.74 | -4.37 |
+| `turn_left` | 0.24 | 0.02 | -0.22 |
+| `turn_right` | 2.1 | 1.85 | -0.25 |
+| `reverse_mdn` | 0 | 0 | 0 |
+| `groom_adn1` | 0 | 0 | 0 |
+| `escape_giant_fiber` | 0 | 0 | 0 |
+| `feed_mn9` | 0 | 0 | 0 |
+
+Splice residual for a decoy, response tail minus baseline:
+
+| Feature | Baseline (Hz) | Response tail (Hz) | Residual (Hz) |
+| --- | ---: | ---: | ---: |
+| `forward_odn1` | 2.16 | 2.5 | 0.33 |
+| `walk_dnp09` | 40.11 | 38.51 | -1.6 |
+| `turn_left` | 0.24 | 0.28 | 0.05 |
+| `turn_right` | 2.1 | 2.62 | 0.52 |
+| `reverse_mdn` | 0 | 0 | 0 |
+| `groom_adn1` | 0 | 0 | 0 |
+| `escape_giant_fiber` | 0 | 0 | 0 |
+| `feed_mn9` | 0 | 0 | 0 |
+
+`escape_giant_fiber` and `reverse_mdn`, the two populations that carry the
+signal, return to exactly their 0 Hz baseline before the splice hands back. The
+largest residual anywhere is `walk_dnp09` at -4.4 Hz against a 40.1 Hz baseline,
+on the noisiest feature in the set (its own baseline standard deviation is
+8.9 Hz).
+
+**These numbers are measured on spliced cache episodes, not on live-simulator
+episodes.** The argument for why that is exact rather than approximate is above;
+running whole episodes against the live network to confirm it end to end is
+listed as a next step and has not been done.
 
 ## What is in this commit, and what is not
 
@@ -266,9 +376,13 @@ Not yet, and each is a named next step rather than a silent omission:
   `--ablation input-shuffle`) are implemented in `fishing/brain-host.mjs` and
   unit tested, and each needs its own recorded cache. No ablation number is
   claimed until those runs exist.
-- **A live-sim validation column.** The results below are measured on spliced
+- **A live-sim validation column.** The results above are measured on spliced
   cache episodes. Running whole episodes against the live network to confirm the
   splice end to end is the check that has not been done yet.
+- **Overlapping pulse amplitudes.** Drawing each event's amplitude from ranges
+  that overlap, instead of using two fixed values, is what would make the
+  bite-versus-decoy call genuinely hard. See the determinism measurement above
+  for why the current version is not.
 
 ## The fly model
 
