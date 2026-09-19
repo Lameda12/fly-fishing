@@ -153,6 +153,51 @@ export async function buildCache({
   };
 }
 
+export function assertUsableCache(cache, task = TASK) {
+  if (cache.schemaVersion !== CACHE_SCHEMA_VERSION) {
+    throw new Error(`cache schema ${cache.schemaVersion}, expected ${CACHE_SCHEMA_VERSION}`);
+  }
+  if (cache.windowMs !== task.windowMs) {
+    throw new Error(`cache window ${cache.windowMs} ms, task window ${task.windowMs} ms`);
+  }
+}
+
+/**
+ * A stretch of recorded background, `windows` long, taken at a random offset
+ * inside a random baseline trace.
+ */
+export function baselineRows(cache, rng, windows) {
+  const trace = cache.baseline.traces[rng.int(cache.baseline.traces.length)];
+  const slack = trace.length - windows;
+  if (slack < 0) throw new Error("baseline trace is shorter than an episode");
+  const offset = rng.int(slack + 1);
+  return trace.slice(offset, offset + windows).map((row) => row.slice());
+}
+
+/**
+ * Lay one recorded response onto `rows`, starting at `startIndex`.
+ *
+ * Mutates in place and returns the rows, so a caller can drop responses onto a
+ * baseline canvas one at a time. The voyage needs that because its later stages
+ * only learn what to present once the earlier ones have been played.
+ */
+export function overlayResponse(rows, cache, stimulus, startIndex, rng) {
+  const section = cache[stimulus];
+  if (!section) {
+    throw new Error(
+      `the cache has no "${stimulus}" responses; record them with: ` +
+        `node fishing/build-cache.mjs --sections ${stimulus} --merge-into <cache>`,
+    );
+  }
+  const response = section.traces[rng.int(section.traces.length)];
+  for (let i = 0; i < response.length; i++) {
+    const target = startIndex + i;
+    if (target >= rows.length) break;
+    rows[target] = response[i].slice();
+  }
+  return rows;
+}
+
 /**
  * Build one episode's per-window feature rows by laying recorded bite responses
  * onto a recorded baseline trace.
@@ -168,36 +213,12 @@ export function spliceEpisode({
   task = TASK,
   episodeMs = TASK.episodeMs,
 }) {
-  if (cache.schemaVersion !== CACHE_SCHEMA_VERSION) {
-    throw new Error(`cache schema ${cache.schemaVersion}, expected ${CACHE_SCHEMA_VERSION}`);
-  }
-  if (cache.windowMs !== task.windowMs) {
-    throw new Error(`cache window ${cache.windowMs} ms, task window ${task.windowMs} ms`);
-  }
+  assertUsableCache(cache, task);
   const rng = createRng(seed);
   const windows = Math.round(episodeMs / task.windowMs);
-
-  const trace = cache.baseline.traces[rng.int(cache.baseline.traces.length)];
-  const slack = trace.length - windows;
-  if (slack < 0) throw new Error("baseline trace is shorter than an episode");
-  const offset = rng.int(slack + 1);
-  const rows = trace.slice(offset, offset + windows).map((row) => row.slice());
-
+  const rows = baselineRows(cache, rng, windows);
   for (const event of events) {
-    const section = cache[event.type];
-    if (!section) {
-      throw new Error(
-        `the cache has no "${event.type}" responses; re-record it with: ` +
-          `node fishing/build-cache.mjs --sections ${event.type} --merge-into <cache>`,
-      );
-    }
-    const response = section.traces[rng.int(section.traces.length)];
-    const start = Math.round(event.atMs / task.windowMs);
-    for (let i = 0; i < response.length; i++) {
-      const target = start + i;
-      if (target >= windows) break;
-      rows[target] = response[i].slice();
-    }
+    overlayResponse(rows, cache, event.type, Math.round(event.atMs / task.windowMs), rng);
   }
   return rows;
 }

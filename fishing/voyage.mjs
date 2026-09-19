@@ -81,7 +81,7 @@ export const STAGES = Object.freeze([
     good: "bait-firm",
     bad: "bait-slip",
     act: "grip",
-    meanGapMs: 2_600,
+    meanGapMs: 1_800,
   },
   {
     id: "fish",
@@ -114,7 +114,7 @@ export const STAGES = Object.freeze([
     // the mistake, and that is scored the same as any other false act.
     bad: null,
     act: "lift the pan",
-    meanGapMs: 3_400,
+    meanGapMs: 1_800,
   },
   {
     id: "eat",
@@ -124,7 +124,7 @@ export const STAGES = Object.freeze([
     good: "morsel-good",
     bad: "morsel-burnt",
     act: "swallow",
-    meanGapMs: 2_800,
+    meanGapMs: 1_600,
   },
 ]);
 
@@ -184,7 +184,12 @@ export function buildStageEvents(stage, seed, { task = TASK, count = Infinity } 
  * stage as well as overall, because "it learned to fish but not to eat" is the
  * interesting failure and a single number would hide it.
  */
-export function createVoyage(events, { task = TASK } = {}) {
+export function createVoyage(initialEvents = [], { task = TASK } = {}) {
+  // Events arrive in two waves. Prep and fishing are known when the voyage
+  // starts; cook and eat are not, because how much there is to cook depends on
+  // how many fish were actually landed. `addEvents` is how the runner hands
+  // those over once the fishing stage has been played.
+  const events = [...initialEvents];
   const claimed = new Set();
   let recastUntilMs = -1;
   let ret = 0;
@@ -193,9 +198,6 @@ export function createVoyage(events, { task = TASK } = {}) {
   for (const stage of STAGES) {
     if (!stage.decision) continue;
     perStage[stage.id] = { chances: 0, correct: 0, wrong: 0, missed: 0, acts: 0 };
-  }
-  for (const event of events) {
-    if (perStage[event.stage] && event.rewarding) perStage[event.stage].chances++;
   }
 
   /** The unclaimed event whose window covers `tMs`, rewarding or not. */
@@ -210,8 +212,13 @@ export function createVoyage(events, { task = TASK } = {}) {
 
   return {
     perStage,
+    events,
     get totalReward() {
       return ret;
+    },
+    /** Add the events for a stage that could not be scheduled in advance. */
+    addEvents(more) {
+      events.push(...more);
     },
     canDecide(tMs) {
       return tMs >= recastUntilMs;
@@ -259,6 +266,11 @@ export function createVoyage(events, { task = TASK } = {}) {
       };
     },
     finish() {
+      // Counted here rather than up front, because the cook and eat events did
+      // not exist when the voyage started.
+      for (const event of events) {
+        if (perStage[event.stage] && event.rewarding) perStage[event.stage].chances++;
+      }
       for (const stage of STAGES) {
         if (!stage.decision) continue;
         const tally = perStage[stage.id];
