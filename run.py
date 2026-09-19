@@ -253,7 +253,15 @@ def main() -> int:
         return 1
     if report([]) != 0:
         return 1
-    print("")
+    # The voyage is the five-stage loop and it is a separate, much longer
+    # training run, so it stays opt-in rather than sitting in the default path.
+    print(
+        "\nThat was the single-stage fishing task. For the five-stage voyage\n"
+        "(bait, fish, row back, cook, eat), which trains one readout head per\n"
+        "stage and takes a few thousand voyages:\n"
+        "  python3 run.py voyage\n"
+        "  python3 run.py record-voyage\n"
+    )
     return serve([])
 
 
