@@ -370,9 +370,6 @@ Not yet, and each is a named next step rather than a silent omission:
 - **Live mode.** A WebSocket from the Python side, with a documented schema.
   Replay mode is all that ships here, which is also what lets `web/` deploy as a
   static site with no backend.
-- **A close-up camera and the webm export.** The viewer has orbit controls and a
-  shared transport; the follow camera and the one-click MediaRecorder capture
-  are not built.
 - **The ablation results.** Both ablations (`--ablation weight-shuffle`,
   `--ablation input-shuffle`) are implemented in `fishing/brain-host.mjs` and
   unit tested, and each needs its own recorded cache. No ablation number is
@@ -437,6 +434,18 @@ static host) as it is. Set the project root to `web/`, the build command to
 Two recordings play side by side off one episode clock, because both were made
 from the same bite schedule. The difference between the panels is the policy and
 nothing else.
+
+Each panel carries its own camera and capture controls:
+
+- **Orbit** (the default) frames the dock and the bobber together.
+- **Close-up** puts the orbit target on the fly and tightens the distance
+  limits around it. Both modes keep the orbit controls live, so close-up means
+  the camera sits on the fly, not that you lose control of it.
+- **Record 30s** captures that panel's canvas with MediaRecorder and hands you a
+  `.webm`. It records the canvas's own `captureStream`, so the file is exactly
+  what was on screen rather than a second render path that could disagree with
+  it. Click again to stop early. On a browser with no webm encoder the button
+  disables itself and says so; the rest of the viewer does not depend on it.
 
 ### The replay format
 

@@ -19,6 +19,9 @@ const BOBBER_DISTANCE = 13;
 const BOBBER_DIP_DEPTH = 1.5;
 /** Where the line leaves the rod, in the fly anchor's frame. */
 const ROD_TIP = new THREE.Vector3(3.0, 0.45, 2.5);
+/** The default framing: fly on the left, bobber on the right, both in shot. */
+const ORBIT_POSITION = new THREE.Vector3(-6.5, -21.5, 7.2);
+const ORBIT_TARGET = new THREE.Vector3(4.4, 0, 1.1);
 
 /** A pooled splash droplet. */
 interface Droplet {
@@ -209,6 +212,7 @@ export class PondScene {
   });
   private readonly resizeObserver: ResizeObserver;
   private ringLife = 0;
+  private cameraMode: "orbit" | "closeup" = "orbit";
 
   constructor(private readonly container: HTMLElement) {
     this.scene.background = new THREE.Color(0x12232a);
@@ -217,7 +221,7 @@ export class PondScene {
     THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
     this.camera = new THREE.PerspectiveCamera(44, 1, 0.1, 400);
     this.camera.up.set(0, 0, 1);
-    this.camera.position.set(-6.5, -21.5, 7.2);
+    this.camera.position.copy(ORBIT_POSITION);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -228,7 +232,7 @@ export class PondScene {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.target.set(4.4, 0, 1.1);
+    this.controls.target.copy(ORBIT_TARGET);
     this.controls.maxPolarAngle = Math.PI * 0.49;
     this.controls.minDistance = 4;
     this.controls.maxDistance = 70;
@@ -318,6 +322,39 @@ export class PondScene {
 
   get usingPlaceholder(): boolean {
     return this.body === null;
+  }
+
+  /**
+   * Orbit frames the whole scene; close-up sits on the fly.
+   *
+   * Both keep OrbitControls live, so "follows the fly" here means the orbit
+   * target moves onto the fly and the distance limits tighten around it, not
+   * that the viewer loses control of the camera.
+   */
+  setCameraMode(mode: "orbit" | "closeup"): void {
+    this.cameraMode = mode;
+    if (mode === "closeup") {
+      const fly = this.flyAnchor.position;
+      this.controls.target.set(fly.x + 0.4, fly.y, fly.z + 0.4);
+      this.controls.minDistance = 2;
+      this.controls.maxDistance = 16;
+      this.camera.position.set(fly.x + 2.6, fly.y - 5.2, fly.z + 2.4);
+    } else {
+      this.controls.target.copy(ORBIT_TARGET);
+      this.controls.minDistance = 4;
+      this.controls.maxDistance = 70;
+      this.camera.position.copy(ORBIT_POSITION);
+    }
+    this.controls.update();
+  }
+
+  get cameraModeName(): "orbit" | "closeup" {
+    return this.cameraMode;
+  }
+
+  /** A live stream of this panel's canvas, for the webm export. */
+  captureStream(fps = 60): MediaStream {
+    return this.renderer.domElement.captureStream(fps);
   }
 
   resize(): void {

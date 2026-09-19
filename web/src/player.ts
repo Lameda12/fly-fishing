@@ -4,6 +4,7 @@
 // whatever rate the browser gives it and interpolates the bobber between
 // windows, so a 20 Hz recording plays smoothly at 60 fps.
 
+import { recordStream, supportedMimeType } from "./capture";
 import { PondScene } from "./scene";
 import type { Replay } from "./types";
 
@@ -11,6 +12,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 interface Hud {
   root: HTMLElement;
+  tools: HTMLElement;
   caught: HTMLElement;
   snapped: HTMLElement;
   timer: HTMLElement;
@@ -44,13 +46,21 @@ function buildHud(container: HTMLElement, replay: Replay): Hud {
       <label><span>P(hook)</span><output data-hook>-</output></label>
       <div class="meter hook"><span data-hook-bar></span></div>
     </div>`;
+  const tools = document.createElement("div");
+  tools.className = "panel-tools";
+  tools.innerHTML = `
+    <button type="button" class="btn tiny" data-camera="orbit" aria-pressed="true">Orbit</button>
+    <button type="button" class="btn tiny" data-camera="closeup" aria-pressed="false">Close-up</button>
+    <button type="button" class="btn tiny" data-record>Record 30s</button>`;
+
   const flash = document.createElement("div");
   flash.className = "snap-flash";
-  container.append(root, flash);
+  container.append(root, tools, flash);
 
   const pick = (name: string) => root.querySelector(`[data-${name}]`) as HTMLElement;
   return {
     root,
+    tools,
     caught: pick("caught"),
     snapped: pick("snapped"),
     timer: pick("timer"),
@@ -75,6 +85,7 @@ export class Player {
   private decoysHooked = 0;
   private flashLife = 0;
   private elapsedSeconds = 0;
+  private recording: { stop(): void; done: Promise<void> } | null = null;
 
   constructor(
     private readonly container: HTMLElement,
@@ -94,6 +105,7 @@ export class Player {
         ? "NeuroMechFly body, neutral pose"
         : "placeholder body (run: python3 tools/build_fly_glb.py)";
     });
+    this.wireTools();
   }
 
   reset(): void {
@@ -145,6 +157,52 @@ export class Player {
     this.paint(index);
   }
 
+  private wireTools(): void {
+    const cameras = this.hud.tools.querySelectorAll<HTMLButtonElement>("[data-camera]");
+    for (const button of cameras) {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.camera as "orbit" | "closeup";
+        this.pond.setCameraMode(mode);
+        for (const other of cameras) {
+          other.setAttribute("aria-pressed", String(other === button));
+        }
+      });
+    }
+
+    const record = this.hud.tools.querySelector<HTMLButtonElement>("[data-record]")!;
+    if (!supportedMimeType()) {
+      record.disabled = true;
+      record.textContent = "No webm here";
+      record.title = "This browser has no MediaRecorder webm encoder";
+      return;
+    }
+    record.addEventListener("click", () => {
+      if (this.recording) {
+        this.recording.stop();
+        return;
+      }
+      const started = recordStream({
+        stream: this.pond.captureStream(60),
+        filename: `fly-fishing-${this.replay.policy}-${this.replay.seed}.webm`,
+        onTick: (left) => {
+          record.textContent = left > 0 ? `Stop (${left}s)` : "Record 30s";
+        },
+      });
+      if (!started) {
+        record.disabled = true;
+        record.textContent = "No webm here";
+        return;
+      }
+      this.recording = started;
+      record.setAttribute("aria-pressed", "true");
+      void started.done.then(() => {
+        this.recording = null;
+        record.textContent = "Record 30s";
+        record.setAttribute("aria-pressed", "false");
+      });
+    });
+  }
+
   /** Rewind the outcome cursor, for a restart or a scrub backwards. */
   seek(episodeMs: number): void {
     this.nextOutcome = 0;
@@ -178,6 +236,7 @@ export class Player {
   }
 
   dispose(): void {
+    this.recording?.stop();
     this.pond.dispose();
     this.container.replaceChildren();
   }
