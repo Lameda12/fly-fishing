@@ -26,9 +26,11 @@ button { font: inherit; color: inherit; }
 .brand h1 { margin: 0; font-size: 17px; font-weight: 500; }
 .brand p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
 .meta { display: flex; gap: 18px; margin-left: auto; color: var(--muted); font-size: 11px; }
+.modes { display: flex; gap: 4px; }
 .meta b { display: block; color: var(--ink); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
 
 #panels { min-height: 0; display: grid; grid-template-columns: 1fr 1fr; }
+#panels.single { grid-template-columns: 1fr; }
 .panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; border-right: 1px solid var(--line); }
 .panel:last-child { border-right: 0; }
 .stage { position: absolute; inset: 0; }
@@ -83,12 +85,15 @@ button { font: inherit; color: inherit; }
   min-height: 32px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px;
   background: var(--control); cursor: pointer; font-size: 12px; white-space: nowrap;
 }
-.btn:hover { border-color: #596364; background: #2c3334; }
+.btn:hover:not(:disabled) { border-color: #596364; background: #2c3334; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
 #scrub { flex: 1 1 220px; min-width: 160px; accent-color: var(--green); }
 #clock { min-width: 96px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .speeds { display: flex; gap: 4px; }
 .note { width: 100%; margin: 0; color: var(--muted); font-size: 10.5px; line-height: 1.5; }
+
+.live-status { display: grid; place-items: center; min-height: 40vh; margin: 0; color: var(--muted); font-size: 13px; }
 
 .fatal { display: grid; place-items: center; min-height: 60vh; padding: 24px; text-align: center; }
 .fatal h1 { font-size: 20px; font-weight: 500; }

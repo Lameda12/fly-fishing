@@ -27,7 +27,7 @@ RECORDINGS = WEB / "public" / "recordings" / "index.json"
 
 MODES = (
     "all", "fetch", "cache", "train", "record", "report", "ablation", "glb",
-    "serve", "build", "test",
+    "live", "serve", "build", "test",
 )
 
 
@@ -96,6 +96,14 @@ def ablation(extra: list[str]) -> int:
     return run(["node", str(ROOT / "tools" / "ablation.mjs"), *extra])
 
 
+def live(extra: list[str]) -> int:
+    """Stream the live network to the viewer over a local WebSocket.
+
+    Runs at about a ninth of real time; the viewer shows brain time.
+    """
+    return run(["node", str(ROOT / "fishing" / "live.mjs"), *extra])
+
+
 def build_glb(extra: list[str]) -> int:
     """Convert the fetched body into web/public/fly.glb (gitignored)."""
     return run([sys.executable, str(ROOT / "tools" / "build_fly_glb.py"), *extra])
@@ -154,8 +162,8 @@ def parse_args() -> argparse.Namespace:
         default="all",
         choices=MODES,
         help="all (default): everything missing, then serve. "
-        "fetch / cache / train / record / report / ablation / glb / serve / build / "
-        "test run one step.",
+        "fetch / cache / train / record / report / ablation / glb / live / serve / "
+        "build / test run one step.",
     )
     parser.add_argument(
         "--rebuild-cache",
@@ -204,6 +212,8 @@ def main() -> int:
         return report(extra)
     if args.mode == "ablation":
         return ablation(extra)
+    if args.mode == "live":
+        return live(extra)
     if args.mode == "glb":
         return build_glb(extra)
 

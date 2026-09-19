@@ -33,8 +33,8 @@ interface Droplet {
 function waterMaterial(): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({
     color: 0x27616e,
-    roughness: 0.14,
-    metalness: 0.32,
+    roughness: 0.22,
+    metalness: 0.22,
     transparent: true,
     opacity: 0.94,
   });
@@ -249,8 +249,10 @@ export class PondScene {
       camera[edge] = edge === "left" || edge === "bottom" ? -26 : 26;
     }
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x8fd4e8, 0.85);
-    rim.position.set(26, 14, 6);
+    // Kept dim and high: a bright, low rim light reflects off the water as a
+    // blown-out hotspot at grazing camera angles.
+    const rim = new THREE.DirectionalLight(0x8fd4e8, 0.4);
+    rim.position.set(24, 16, 20);
     this.scene.add(rim);
 
     const material = waterMaterial();

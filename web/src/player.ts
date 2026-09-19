@@ -77,7 +77,6 @@ function buildHud(container: HTMLElement, replay: Replay): Hud {
 export class Player {
   private readonly pond: PondScene;
   private readonly hud: Hud;
-  private readonly frames: number;
   /** Outcomes already played, so a restart replays them and a seek does not double-fire. */
   private nextOutcome = 0;
   private caught = 0;
@@ -96,7 +95,6 @@ export class Player {
     container.appendChild(stage);
     this.pond = new PondScene(stage);
     this.hud = buildHud(container, replay);
-    this.frames = replay.frames.bobber.length;
     this.paint(0);
     // The real body is generated locally and gitignored, so its absence is
     // normal rather than an error; the badge says which one is on screen.
@@ -124,9 +122,10 @@ export class Player {
   update(episodeMs: number, dt: number): void {
     this.elapsedSeconds += dt;
 
+    const last = Math.max(0, this.frameCount - 1);
     const exact = episodeMs / this.replay.windowMs;
-    const index = Math.min(this.frames - 1, Math.max(0, Math.floor(exact)));
-    const next = Math.min(this.frames - 1, index + 1);
+    const index = Math.min(last, Math.max(0, Math.floor(exact)));
+    const next = Math.min(last, index + 1);
     const t = exact - Math.floor(exact);
     const dip = lerp(this.replay.frames.bobber[index] ?? 0, this.replay.frames.bobber[next] ?? 0, t);
 
@@ -203,6 +202,34 @@ export class Player {
     });
   }
 
+  /**
+   * Adopt the simulator's running totals.
+   *
+   * Live mode needs this because a viewer that connects part-way through an
+   * episode never saw the outcomes that came before it, and counting only what
+   * it witnessed would under-report. Every live frame carries the authoritative
+   * totals, so they are taken rather than recomputed. Replay has no use for it:
+   * there, the outcome list is complete from the start.
+   */
+  setCounts(counts: { caught: number; snapped: number; decoysHooked: number }): void {
+    this.caught = counts.caught;
+    this.snapped = counts.snapped;
+    this.decoysHooked = counts.decoysHooked;
+    // Outcomes already accounted for must not fire their splash a second time.
+    this.nextOutcome = this.replay.outcomes.length;
+  }
+
+  /**
+   * How many frames exist right now.
+   *
+   * Read rather than cached: a live episode's columns start empty and grow as
+   * the simulator produces windows, so a count taken at construction would be
+   * zero and every index would clamp to -1.
+   */
+  private get frameCount(): number {
+    return this.replay.frames.bobber.length;
+  }
+
   /** Rewind the outcome cursor, for a restart or a scrub backwards. */
   seek(episodeMs: number): void {
     this.nextOutcome = 0;
@@ -219,7 +246,9 @@ export class Player {
       }
       this.nextOutcome++;
     }
-    this.paint(Math.min(this.frames - 1, Math.floor(episodeMs / this.replay.windowMs)));
+    this.paint(
+      Math.min(Math.max(0, this.frameCount - 1), Math.floor(episodeMs / this.replay.windowMs)),
+    );
   }
 
   private paint(index: number): void {
