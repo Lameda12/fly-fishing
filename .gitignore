@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+node_modules/
+web/dist/
+
+# The upstream simulator is fetched, never vendored: embodied-fly-lab ships no
+# LICENSE file, so its code and its ~91 MB connectome data are not
+# redistributable here. tools/fetch_sim.py puts a local checkout in vendor/.
+vendor/
+
+# Descending-neuron response cache: regenerated from the local simulator
+# checkout, and derived from upstream data, so it is not committed either.
+results/dn-cache*.json

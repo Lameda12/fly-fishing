@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Fly Fishing - Replay</title>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Fly Fishing</h1>
+        <p>A frozen connectome, a 17-weight readout, and a bobber</p>
+      </div>
+      <div class="meta">
+        <div>Episode seed<b id="seed">-</b></div>
+        <div>Simulator<b id="sim">-</b></div>
+      </div>
+    </header>
+
+    <main id="panels" aria-label="Recorded episodes"></main>
+
+    <footer class="transport">
+      <button id="play" class="btn" type="button">Pause</button>
+      <button id="restart" class="btn" type="button">Restart</button>
+      <div class="speeds" role="group" aria-label="Playback speed">
+        <button class="btn" type="button" data-speed="0.5" aria-pressed="false">0.5x</button>
+        <button class="btn" type="button" data-speed="1" aria-pressed="true">1x</button>
+        <button class="btn" type="button" data-speed="3" aria-pressed="false">3x</button>
+      </div>
+      <input id="scrub" type="range" min="0" max="60000" step="50" value="0" aria-label="Episode time">
+      <span id="clock">0.0 / 60 s</span>
+      <p class="note">
+        Both panels play the same bite schedule, so the difference between them is the policy and
+        nothing else. The connectome is frozen: the only thing that was trained is a linear readout
+        from eight descending-neuron rates to hook-or-wait. The fly does not learn to fish. The dock,
+        the water, the bobber and the fly's placeholder body are drawn; what comes out of the
+        simulation is the rate the HUD prints and the timing everything runs on.
+      </p>
+    </footer>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

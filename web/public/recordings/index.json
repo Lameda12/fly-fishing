@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-18T23:51:19.991Z",
+  "seed": 3109511962,
+  "recordings": [
+    {
+      "file": "trained.json",
+      "label": "Trained readout",
+      "policy": "readoutGreedy",
+      "summary": {
+        "bites": 13,
+        "caught": 13,
+        "snapped": 0,
+        "missed": 0,
+        "totalReward": 13,
+        "catchRate": 1,
+        "falseHooksPerMinute": 0
+      }
+    },
+    {
+      "file": "random.json",
+      "label": "Random control",
+      "policy": "random",
+      "summary": {
+        "bites": 13,
+        "caught": 1,
+        "snapped": 6,
+        "missed": 12,
+        "totalReward": -2,
+        "catchRate": 0.077,
+        "falseHooksPerMinute": 6
+      }
+    }
+  ]
+}
