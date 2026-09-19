@@ -12,6 +12,13 @@ import {
   createVoyage,
   stageAt,
 } from "../fishing/voyage.mjs";
+import { restingRates } from "../fishing/cache.mjs";
+import {
+  FEATURE_COUNT,
+  buildFeatures,
+  createPolicy,
+  createStagedReadout,
+} from "../fishing/readout.mjs";
 import { runVoyage, voyageOraclePolicy, voyageReflexPolicy } from "../fishing/voyage-episode.mjs";
 
 // --- the stage table --------------------------------------------------------
@@ -237,6 +244,95 @@ function fakeCache() {
     Math.round(VOYAGE_MS / TASK.windowMs),
     "one feature row per window of the voyage",
   );
+}
+
+// --- the per-stage window ---------------------------------------------------
+//
+// Cooking gets a longer window than the rest because the network answers odor
+// tonically rather than phasically; see the stage table. The point of the test
+// is that only cooking is special and that the longer window actually reaches
+// the scorer, not that 2500 is the right number.
+{
+  const cook = STAGES.find((stage) => stage.id === "cook");
+  assert.equal(cook.windowMs, 2_500);
+  for (const stage of STAGES.filter((s) => s.decision && s.id !== "cook")) {
+    assert.equal(stage.windowMs, undefined, `${stage.id} should inherit the task window`);
+  }
+
+  const scorer = createVoyage(
+    [{ atMs: 41_000, stage: "cook", stimulus: "pan-ready", rewarding: true }],
+    { task: TASK },
+  );
+  // Well past the 500 ms the other stages get, and still inside cooking's own.
+  assert.equal(scorer.step(42_000, 1).outcome, "good", "cooking pays late in its window");
+
+  const late = createVoyage(
+    [{ atMs: 41_000, stage: "cook", stimulus: "pan-ready", rewarding: true }],
+    { task: TASK },
+  );
+  assert.equal(late.step(43_600, 1).outcome, "bad", "and stops paying once it closes");
+}
+
+// --- resting rates and centred features -------------------------------------
+{
+  const cache = fakeCache();
+  const resting = restingRates(cache);
+  assert.equal(resting.length, READOUT_FEATURES.length);
+
+  const rates = resting.map((rate) => rate + 10);
+  const centred = buildFeatures(rates, resting, resting);
+  for (let i = 0; i < READOUT_FEATURES.length; i++) {
+    assert.ok(Math.abs(centred[i] - 0.1) < 1e-9, "a rate 10 Hz over rest reads as 0.1");
+    assert.ok(Math.abs(centred[READOUT_FEATURES.length + i]) < 1e-9, "rest itself reads as 0");
+  }
+  // Raw is still available, and is what the single-stage task is trained on.
+  const raw = buildFeatures(rates, resting, null);
+  assert.ok(Math.abs(raw[0] - rates[0] / 100) < 1e-9);
+  assert.equal(centred[centred.length - 1], 1, "the bias stays 1 either way");
+}
+
+// --- per-stage readout heads ------------------------------------------------
+{
+  const stageIds = STAGES.filter((stage) => stage.decision).map((stage) => stage.id);
+  const staged = createStagedReadout({ stageIds });
+  assert.equal(staged.head("cook").weights.length, FEATURE_COUNT);
+  assert.throws(() => staged.head("row"), /no readout head/, "transit has no head");
+
+  // The heads are independent: moving one must not move another.
+  staged.head("cook").weights[0] = 99;
+  assert.equal(staged.head("eat").weights[0], 0);
+
+  const json = staged.toJSON();
+  assert.equal(json.perStage, true);
+  assert.deepEqual(Object.keys(json.weights), stageIds);
+
+  // A staged policy dispatches on the stage it is handed, and nothing else.
+  const zeros = new Array(READOUT_FEATURES.length).fill(0);
+  const features = buildFeatures(zeros, zeros, null);
+  staged.head("cook").weights.fill(0);
+  staged.head("cook").weights[staged.head("cook").weights.length - 1] = 40;
+  const greedy = createPolicy("stagedReadoutGreedy", { task: TASK, staged });
+  assert.equal(greedy.act(0, features, "cook"), 1, "a saturated head acts");
+  assert.equal(greedy.act(0, features, "eat"), 0, "its neighbour is untouched");
+}
+
+// --- the voyage hands the stage to the policy -------------------------------
+{
+  const cache = fakeCache();
+  const seen = new Set();
+  runVoyage({
+    cache,
+    seed: 7,
+    collect: true,
+    policy: {
+      act: (_tMs, _features, stage) => {
+        seen.add(stage);
+        return 0;
+      },
+    },
+  });
+  assert.deepEqual([...seen].sort(), ["cook", "eat", "fish", "prep"].sort());
+  assert.ok(!seen.has("row"), "transit never asks the policy");
 }
 
 console.log("voyage: all assertions passed");

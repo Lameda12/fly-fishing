@@ -89,7 +89,7 @@ def report(extra: list[str]) -> int:
 
 
 def voyage(extra: list[str]) -> int:
-    """Train one shared readout across the five stages of a voyage."""
+    """Train one readout head per decision stage of a voyage."""
     return run(["node", str(ROOT / "fishing" / "train-voyage.mjs"), *extra])
 
 
@@ -187,11 +187,10 @@ def parse_args() -> argparse.Namespace:
         "Arguments after -- go to the step, for example:\n"
         "  python3 run.py train -- --seed 7 --episodes 1200\n"
         "  python3 run.py cache -- --ablation weight-shuffle\n"
-        "  python3 run.py voyage -- --episodes 3000\n"
+        "  python3 run.py voyage -- --heads shared\n"
         "\nThe ablation needs all three caches recorded first:\n"
         "  python3 run.py cache\n"
         "  python3 run.py cache -- --ablation weight-shuffle\n"
-        "  python3 run.py voyage -- --episodes 3000\n"
         "  python3 run.py cache -- --ablation input-shuffle\n"
         "  python3 run.py ablation"
     )
