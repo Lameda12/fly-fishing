@@ -5,6 +5,7 @@ import {
   BASELINE_MS,
   CACHE_SCHEMA_VERSION,
   RESPONSE_MS,
+  discriminability,
   spliceEpisode,
   spliceResidual,
 } from "../fishing/cache.mjs";
@@ -145,6 +146,46 @@ function fakeCache({ baselineTraces = 2, biteTraces = 3 } = {}) {
     Math.abs(rows[0].residualHz - (9 - rows[0].baselineHz)) < 0.02,
     "residual is tail minus baseline",
   );
+}
+
+// --- discriminability -------------------------------------------------------
+// The fixture's bites read 9 and decoys read 5 with no variation at all, so the
+// separation is infinite; d' has to stay a finite number or a null rather than
+// dividing by a zero pooled spread.
+{
+  const rows = discriminability(fakeCache());
+  assert.equal(rows.length, READOUT_FEATURES.length);
+  const first = rows[0];
+  assert.equal(first.bitePeakHz, 9);
+  assert.equal(first.decoyPeakHz, 5);
+  assert.equal(first.bitePeakSd, 0);
+  assert.equal(first.dPrime, null, "no spread means no d', not a division by zero");
+  assert.ok(rows.every((row) => row.dPrime === null || Number.isFinite(row.dPrime)));
+}
+// With spread, d' is the mean difference over the pooled standard deviation.
+{
+  const cache = fakeCache();
+  const responseWindows = cache.bite.traces[0].length;
+  // Two bite traces peaking at 10 and 20, two decoy traces at 4 and 6.
+  const flat = (peak) => Array.from({ length: responseWindows }, () => READOUT_FEATURES.map(() => peak));
+  cache.bite.traces = [flat(10), flat(20)];
+  cache.decoy.traces = [flat(4), flat(6)];
+  const row = discriminability(cache)[0];
+  assert.equal(row.bitePeakHz, 15);
+  assert.equal(row.bitePeakSd, 5);
+  assert.equal(row.decoyPeakHz, 5);
+  assert.equal(row.decoyPeakSd, 1);
+  // |15 - 5| / sqrt((25 + 1) / 2) = 10 / 3.6055... = 2.77
+  assert.ok(Math.abs(row.dPrime - 2.77) < 0.01, `d' was ${row.dPrime}`);
+}
+// A cache with no decoys can still be summarized; d' is simply unavailable.
+{
+  const { decoy, ...withoutDecoys } = fakeCache();
+  void decoy;
+  const rows = discriminability(withoutDecoys);
+  assert.equal(rows[0].decoyPeakHz, null);
+  assert.equal(rows[0].dPrime, null);
+  assert.equal(rows[0].bitePeakHz, 9, "the bite side is still measured");
 }
 
 // --- the bobber track -------------------------------------------------------

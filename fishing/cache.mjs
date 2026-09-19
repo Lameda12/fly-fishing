@@ -225,3 +225,46 @@ export function spliceResidual(cache, type = "bite") {
     residualHz: round2(biteTail[f] - baselineMean[f]),
   }));
 }
+
+/**
+ * How much bite-versus-decoy information each readout population actually
+ * carries, measured on the recorded responses.
+ *
+ * For each feature: the peak rate reached within each recorded response, summarized
+ * across realizations, plus the baseline level, plus d' = |mean difference| /
+ * pooled standard deviation. d' is the honest way to say "how separable"; a
+ * large one means a threshold on that feature alone would do it.
+ *
+ * This is the measurement that says whether an ablation destroyed the signal or
+ * left it intact, which is the whole question an ablation is asked.
+ */
+export function discriminability(cache) {
+  const summarize = (values) => {
+    const mean = values.reduce((total, value) => total + value, 0) / values.length;
+    const variance =
+      values.reduce((total, value) => total + (value - mean) ** 2, 0) / values.length;
+    return { mean, sd: Math.sqrt(variance) };
+  };
+  const peaks = (section, feature) =>
+    section.traces.map((trace) => Math.max(...trace.map((row) => row[feature])));
+
+  return READOUT_FEATURES.map((name, feature) => {
+    const bite = summarize(peaks(cache.bite, feature));
+    const decoy = cache.decoy ? summarize(peaks(cache.decoy, feature)) : null;
+    const baseline = summarize(cache.baseline.traces.flat().map((row) => row[feature]));
+    const pooled = decoy ? Math.sqrt((bite.sd ** 2 + decoy.sd ** 2) / 2) : 0;
+    return {
+      feature: name,
+      bitePeakHz: round2(bite.mean),
+      bitePeakSd: round2(bite.sd),
+      decoyPeakHz: decoy ? round2(decoy.mean) : null,
+      decoyPeakSd: decoy ? round2(decoy.sd) : null,
+      baselineHz: round2(baseline.mean),
+      baselineSd: round2(baseline.sd),
+      // Null when the two are identical to the last decimal, which for the
+      // silent populations means there is nothing to separate rather than a
+      // separation of zero standard deviations.
+      dPrime: decoy && pooled > 0 ? round2(Math.abs(bite.mean - decoy.mean) / pooled) : null,
+    };
+  });
+}

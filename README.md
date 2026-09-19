@@ -68,6 +68,7 @@ python3 run.py train -- --seed 7 --episodes 1200    # only train
 python3 run.py record                               # only re-record the replay pair
 python3 run.py report                               # only re-run the baselines table
 python3 run.py glb                                  # only convert the fly body
+python3 run.py ablation                             # compare against the ablated connectomes
 python3 run.py serve                                # only serve the viewer
 python3 run.py build                                # build the static site
 python3 run.py test                                 # the scripted layer's tests

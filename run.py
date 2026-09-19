@@ -25,7 +25,10 @@ CACHE = ROOT / "results" / "dn-cache.json"
 FLY_GLB = WEB / "public" / "fly.glb"
 RECORDINGS = WEB / "public" / "recordings" / "index.json"
 
-MODES = ("all", "fetch", "cache", "train", "record", "report", "glb", "serve", "build", "test")
+MODES = (
+    "all", "fetch", "cache", "train", "record", "report", "ablation", "glb",
+    "serve", "build", "test",
+)
 
 
 def run(command: list[str], cwd: Path = ROOT) -> int:
@@ -83,6 +86,14 @@ def record(extra: list[str]) -> int:
 
 def report(extra: list[str]) -> int:
     return run(["node", str(ROOT / "tools" / "report.mjs"), *extra])
+
+
+def ablation(extra: list[str]) -> int:
+    """Compare the intact connectome against both ablated ones.
+
+    Needs one recorded cache per arm; the tool says which are missing.
+    """
+    return run(["node", str(ROOT / "tools" / "ablation.mjs"), *extra])
 
 
 def build_glb(extra: list[str]) -> int:
@@ -143,7 +154,8 @@ def parse_args() -> argparse.Namespace:
         default="all",
         choices=MODES,
         help="all (default): everything missing, then serve. "
-        "fetch / cache / train / record / report / glb / serve / build / test run one step.",
+        "fetch / cache / train / record / report / ablation / glb / serve / build / "
+        "test run one step.",
     )
     parser.add_argument(
         "--rebuild-cache",
@@ -156,7 +168,12 @@ def parse_args() -> argparse.Namespace:
     parser.epilog = (
         "Arguments after -- go to the step, for example:\n"
         "  python3 run.py train -- --seed 7 --episodes 1200\n"
-        "  python3 run.py cache -- --ablation weight-shuffle"
+        "  python3 run.py cache -- --ablation weight-shuffle\n"
+        "\nThe ablation needs all three caches recorded first:\n"
+        "  python3 run.py cache\n"
+        "  python3 run.py cache -- --ablation weight-shuffle\n"
+        "  python3 run.py cache -- --ablation input-shuffle\n"
+        "  python3 run.py ablation"
     )
     return parser.parse_args(split_argv(sys.argv[1:])[0])
 
@@ -185,6 +202,8 @@ def main() -> int:
         return record(extra)
     if args.mode == "report":
         return report(extra)
+    if args.mode == "ablation":
+        return ablation(extra)
     if args.mode == "glb":
         return build_glb(extra)
 

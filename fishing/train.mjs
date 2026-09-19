@@ -54,6 +54,67 @@ export function evalSeeds(runSeed, count) {
 }
 
 /**
+ * Fit a readout against one cache, from scratch.
+ *
+ * Extracted from the CLI so the ablation runs can train under exactly the same
+ * procedure, hyperparameters and seeds as the headline run. Anything that
+ * differed between them would make the comparison meaningless.
+ */
+export function trainReadout({
+  cache,
+  runSeed,
+  episodes,
+  heldOut,
+  evalEvery = 20,
+  learningRate = 0.05,
+  gamma = 0.9,
+  task = TASK,
+  onEval,
+}) {
+  const readout = createReadout();
+  const trainer = createTrainer({ readout, learningRate, gamma });
+  const points = [];
+  const checkpoints = [];
+
+  const measure = () =>
+    evaluate({
+      cache,
+      seeds: heldOut,
+      makePolicy: () => createPolicy("readoutGreedy", { task, readout }),
+      task,
+    });
+
+  for (let episode = 1; episode <= episodes; episode++) {
+    const seed = deriveSeed(runSeed, "train", episode);
+    const events = buildSchedule(seed, { task });
+    const rows = spliceEpisode({ cache, events, seed, task });
+    const { decisions } = runEpisode({
+      featureAt: fromRows(rows),
+      policy: createPolicy("readout", { readout, seed: deriveSeed(seed, "act") }),
+      events,
+      task,
+    });
+    trainer.update(decisions);
+
+    if (episode % evalEvery === 0 || episode === 1) {
+      const result = measure();
+      points.push({
+        episode,
+        catchRate: Number(result.catchRate.toFixed(4)),
+        decoyHookRate: Number(result.decoyHookRate.toFixed(4)),
+        falseHooksPerMinute: Number(result.falseHooksPerMinute.toFixed(3)),
+        hookPrecision: Number(result.hookPrecision.toFixed(4)),
+        meanReward: Number(result.totalReward.toFixed(3)),
+      });
+      checkpoints.push({ episode, weights: [...readout.weights] });
+      onEval?.(episode, result);
+    }
+  }
+
+  return { readout, points, checkpoints, final: measure() };
+}
+
+/**
  * Run a policy over a set of cached episodes and average the outcome. Used for
  * the learning curve and for the baselines table.
  */
@@ -116,13 +177,6 @@ async function main() {
     return 1;
   }
 
-  const readout = createReadout();
-  const trainer = createTrainer({
-    readout,
-    learningRate: Number.parseFloat(values["learning-rate"]),
-    gamma: Number.parseFloat(values.gamma),
-  });
-
   const heldOut = evalSeeds(runSeed, evalCount);
   const reference = {
     oracle: evaluate({
@@ -155,48 +209,21 @@ async function main() {
   );
   say("");
 
-  const points = [];
-  const checkpoints = [];
-  for (let episode = 1; episode <= episodes; episode++) {
-    const seed = deriveSeed(runSeed, "train", episode);
-    const events = buildSchedule(seed, { task: TASK });
-    const rows = spliceEpisode({ cache, events, seed, task: TASK });
-    const { decisions } = runEpisode({
-      featureAt: fromRows(rows),
-      policy: createPolicy("readout", { readout, seed: deriveSeed(seed, "act") }),
-      events,
-      task: TASK,
-    });
-    trainer.update(decisions);
-
-    if (episode % evalEvery === 0 || episode === 1) {
-      const result = evaluate({
-        cache,
-        seeds: heldOut,
-        makePolicy: () => createPolicy("readoutGreedy", { task: TASK, readout }),
-      });
-      points.push({
-        episode,
-        catchRate: Number(result.catchRate.toFixed(4)),
-        decoyHookRate: Number(result.decoyHookRate.toFixed(4)),
-        falseHooksPerMinute: Number(result.falseHooksPerMinute.toFixed(3)),
-        hookPrecision: Number(result.hookPrecision.toFixed(4)),
-        meanReward: Number(result.totalReward.toFixed(3)),
-      });
-      checkpoints.push({ episode, weights: [...readout.weights] });
+  const { readout, points, checkpoints, final } = trainReadout({
+    cache,
+    runSeed,
+    episodes,
+    heldOut,
+    evalEvery,
+    learningRate: Number.parseFloat(values["learning-rate"]),
+    gamma: Number.parseFloat(values.gamma),
+    onEval: (episode, result) =>
       say(
         `  episode ${String(episode).padStart(4)}   catch ${(result.catchRate * 100).toFixed(1).padStart(5)}%` +
           `   decoys hooked ${(result.decoyHookRate * 100).toFixed(1).padStart(5)}%` +
           `   false hooks ${result.falseHooksPerMinute.toFixed(2).padStart(5)}/min` +
           `   reward ${result.totalReward.toFixed(2).padStart(6)}`,
-      );
-    }
-  }
-
-  const final = evaluate({
-    cache,
-    seeds: heldOut,
-    makePolicy: () => createPolicy("readoutGreedy", { task: TASK, readout }),
+      ),
   });
 
   await mkdir(outDir, { recursive: true });
