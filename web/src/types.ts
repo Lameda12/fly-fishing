@@ -7,8 +7,15 @@
 export interface ReplayEvent {
   /** Milliseconds of episode time at which something took the bait. */
   tMs: number;
-  /** A real fish, or a decoy nibble that dips the bobber the same way. */
-  type: "bite" | "decoy";
+  /**
+   * What happened. A fishing episode uses "bite" and "decoy"; a voyage names
+   * the stimulus its stage presented, such as "bait-firm" or "morsel-burnt".
+   */
+  type: string;
+  /** Present on a voyage: which stage the event belongs to. */
+  stage?: string;
+  /** Present on a voyage: whether acting on it pays. */
+  rewarding?: boolean;
 }
 
 export interface ReplayOutcome {
@@ -16,6 +23,8 @@ export interface ReplayOutcome {
   type: "catch" | "snap";
   /** On a snap: whether a decoy was what the policy fell for. */
   onDecoy?: boolean;
+  /** Present on a voyage: which stage the act was made in. */
+  stage?: string;
 }
 
 export interface ReplaySummary {

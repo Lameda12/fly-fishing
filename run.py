@@ -27,7 +27,7 @@ RECORDINGS = WEB / "public" / "recordings" / "index.json"
 
 MODES = (
     "all", "fetch", "cache", "train", "record", "report", "ablation", "glb",
-    "live", "serve", "build", "test",
+    "voyage", "record-voyage", "live", "serve", "build", "test",
 )
 
 
@@ -86,6 +86,16 @@ def record(extra: list[str]) -> int:
 
 def report(extra: list[str]) -> int:
     return run(["node", str(ROOT / "tools" / "report.mjs"), *extra])
+
+
+def voyage(extra: list[str]) -> int:
+    """Train one shared readout across the five stages of a voyage."""
+    return run(["node", str(ROOT / "fishing" / "train-voyage.mjs"), *extra])
+
+
+def record_voyage(extra: list[str]) -> int:
+    """Record a voyage pair for the viewer: trained readout against reflex."""
+    return run(["node", str(ROOT / "fishing" / "record-voyage.mjs"), *extra])
 
 
 def ablation(extra: list[str]) -> int:
@@ -162,8 +172,8 @@ def parse_args() -> argparse.Namespace:
         default="all",
         choices=MODES,
         help="all (default): everything missing, then serve. "
-        "fetch / cache / train / record / report / ablation / glb / live / serve / "
-        "build / test run one step.",
+        "fetch / cache / train / record / report / voyage / record-voyage / "
+        "ablation / glb / live / serve / build / test run one step.",
     )
     parser.add_argument(
         "--rebuild-cache",
@@ -177,9 +187,11 @@ def parse_args() -> argparse.Namespace:
         "Arguments after -- go to the step, for example:\n"
         "  python3 run.py train -- --seed 7 --episodes 1200\n"
         "  python3 run.py cache -- --ablation weight-shuffle\n"
+        "  python3 run.py voyage -- --episodes 3000\n"
         "\nThe ablation needs all three caches recorded first:\n"
         "  python3 run.py cache\n"
         "  python3 run.py cache -- --ablation weight-shuffle\n"
+        "  python3 run.py voyage -- --episodes 3000\n"
         "  python3 run.py cache -- --ablation input-shuffle\n"
         "  python3 run.py ablation"
     )
@@ -210,6 +222,10 @@ def main() -> int:
         return record(extra)
     if args.mode == "report":
         return report(extra)
+    if args.mode == "voyage":
+        return voyage(extra)
+    if args.mode == "record-voyage":
+        return record_voyage(extra)
     if args.mode == "ablation":
         return ablation(extra)
     if args.mode == "live":
