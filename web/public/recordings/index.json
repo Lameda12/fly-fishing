@@ -1,40 +1,87 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-19T00:31:20.019Z",
-  "seed": 3176622438,
+  "generatedAt": "2026-09-19T05:44:47.580Z",
+  "seed": 1081202049,
+  "kind": "voyage",
   "recordings": [
     {
       "file": "trained.json",
       "label": "Trained readout",
       "policy": "readoutGreedy",
       "summary": {
-        "bites": 7,
-        "caught": 7,
-        "snapped": 0,
-        "decoys": 7,
-        "decoysHooked": 0,
+        "bites": 12,
+        "caught": 12,
+        "snapped": 2,
+        "decoys": 2,
+        "decoysHooked": 2,
         "missed": 0,
-        "totalReward": 7,
+        "totalReward": 11,
         "catchRate": 1,
         "decoyHookRate": 0,
-        "falseHooksPerMinute": 0
+        "falseHooksPerMinute": 2,
+        "fishCaught": 4,
+        "perStage": {
+          "prep": {
+            "chances": 2,
+            "correct": 2,
+            "wrong": 0
+          },
+          "fish": {
+            "chances": 4,
+            "correct": 4,
+            "wrong": 0
+          },
+          "cook": {
+            "chances": 3,
+            "correct": 3,
+            "wrong": 2
+          },
+          "eat": {
+            "chances": 3,
+            "correct": 3,
+            "wrong": 0
+          }
+        }
       }
     },
     {
-      "file": "random.json",
-      "label": "Random control",
-      "policy": "random",
+      "file": "reflex.json",
+      "label": "Reflex baseline",
+      "policy": "reflex",
       "summary": {
-        "bites": 7,
-        "caught": 0,
+        "bites": 12,
+        "caught": 11,
         "snapped": 4,
-        "decoys": 7,
-        "decoysHooked": 0,
-        "missed": 7,
-        "totalReward": -2,
-        "catchRate": 0,
+        "decoys": 4,
+        "decoysHooked": 4,
+        "missed": 1,
+        "totalReward": 9,
+        "catchRate": 0.917,
         "decoyHookRate": 0,
-        "falseHooksPerMinute": 4
+        "falseHooksPerMinute": 4,
+        "fishCaught": 4,
+        "perStage": {
+          "prep": {
+            "chances": 2,
+            "correct": 1,
+            "wrong": 2
+          },
+          "fish": {
+            "chances": 4,
+            "correct": 4,
+            "wrong": 1
+          },
+          "cook": {
+            "chances": 3,
+            "correct": 3,
+            "wrong": 0
+          },
+          "eat": {
+            "chances": 3,
+            "correct": 3,
+            "wrong": 1
+          }
+        }
       }
     }
   ]

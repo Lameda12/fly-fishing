@@ -10,7 +10,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
 import { READOUT_FEATURES, REPO_ROOT } from "./brain-host.mjs";
-import { createPolicy, createReadout, FEATURE_COUNT } from "./readout.mjs";
+import { createPolicy, createReadout, createStagedReadout, FEATURE_COUNT } from "./readout.mjs";
 import { TASK } from "./task.mjs";
 import { STAGES, STAGE_STARTS } from "./voyage.mjs";
 import { runVoyage, voyageReflexPolicy } from "./voyage-episode.mjs";
@@ -47,7 +47,38 @@ function voyageBobberTrack(events, windows, task = TASK) {
   return track;
 }
 
-export function buildVoyageReplay({ cache, seed, policySpec, label, policyName, task = TASK }) {
+/**
+ * Rebuild the trained policy from a checkpoint, whichever shape it has.
+ *
+ * `perStage` checkpoints carry one weight vector per decision stage; the older
+ * shared ones carry a single vector. Both are 17 weights per head.
+ */
+export function policyFromCheckpoint(checkpoint, task = TASK) {
+  if (checkpoint.perStage) {
+    const stageIds = Object.keys(checkpoint.weights);
+    const staged = createStagedReadout({ stageIds, weights: checkpoint.weights });
+    return {
+      policy: createPolicy("stagedReadoutGreedy", { task, staged }),
+      trained:
+        `${stageIds.length} linear readout heads of ${FEATURE_COUNT} weights each, ` +
+        "one per decision stage",
+    };
+  }
+  return {
+    policy: createPolicy("readoutGreedy", { task, readout: createReadout({ weights: checkpoint.weights }) }),
+    trained: `one ${FEATURE_COUNT}-weight linear readout, shared by all four decision stages`,
+  };
+}
+
+export function buildVoyageReplay({
+  cache,
+  seed,
+  policySpec,
+  label,
+  policyName,
+  trained,
+  task = TASK,
+}) {
   const { summary, trace, events } = runVoyage({
     cache,
     seed,
@@ -148,7 +179,7 @@ export function buildVoyageReplay({ cache, seed, policySpec, label, policyName, 
         "the boat, the jetty, the fire, the water, and where the fly stands",
       ],
       frozen: "the connectome",
-      trained: `a ${FEATURE_COUNT}-weight linear readout, shared by all four decision stages`,
+      trained: trained ?? `a ${FEATURE_COUNT}-weight linear readout`,
       disclaimer:
         "This is a property of this code and its hand-designed sensory interfaces. The fly " +
         "does not learn to fish, cook or eat.",
@@ -220,27 +251,30 @@ async function main() {
     );
     return 1;
   }
-  const readout = createReadout({ weights: checkpoint.readout.weights });
+  const { policy: trainedPolicy, trained } = policyFromCheckpoint(checkpoint.readout);
 
   const seed = voyageEvalSeeds(runSeed, episodeIndex + 1)[episodeIndex];
   await mkdir(outDir, { recursive: true });
 
   const written = [];
-  for (const [file, policyName, label, policySpec] of [
-    [
-      "trained.json",
-      "readoutGreedy",
-      "Trained readout",
-      createPolicy("readoutGreedy", { task: TASK, readout }),
-    ],
+  for (const [file, policyName, label, policySpec, note] of [
+    ["trained.json", "readoutGreedy", "Trained readout", trainedPolicy, trained],
     [
       "reflex.json",
       "reflex",
       "Reflex baseline",
       ({ events }) => voyageReflexPolicy({ scorerEvents: events }),
+      "nothing: this one is scripted, and acts on every rewarding event",
     ],
   ]) {
-    const replay = buildVoyageReplay({ cache, seed, policySpec, label, policyName });
+    const replay = buildVoyageReplay({
+      cache,
+      seed,
+      policySpec,
+      label,
+      policyName,
+      trained: note,
+    });
     const target = path.join(outDir, file);
     await writeFile(target, `${JSON.stringify(replay)}\n`, "utf8");
     written.push({ target, replay });

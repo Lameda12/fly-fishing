@@ -1,0 +1,212 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-19T05:43:42.138Z",
+  "runSeed": 1592594996,
+  "episodes": 4000,
+  "trainSeeds": [
+    1592594996,
+    1573543571,
+    1556765952,
+    1539988333,
+    1523210714
+  ],
+  "evalEpisodes": 1000,
+  "convergedCount": 5,
+  "runs": [
+    {
+      "trainSeed": 1592594996,
+      "converged": true,
+      "successRate": 0.9894,
+      "meanReward": 6.06,
+      "fishCaught": 2.34,
+      "stages": {
+        "prep": 1,
+        "fish": 0.9988,
+        "cook": 1,
+        "eat": 0.9978
+      }
+    },
+    {
+      "trainSeed": 1573543571,
+      "converged": true,
+      "successRate": 0.8565,
+      "meanReward": 5.06,
+      "fishCaught": 2.34,
+      "stages": {
+        "prep": 1,
+        "fish": 0.9988,
+        "cook": 1,
+        "eat": 0
+      }
+    },
+    {
+      "trainSeed": 1556765952,
+      "converged": true,
+      "successRate": 0.9875,
+      "meanReward": 6.171,
+      "fishCaught": 2.34,
+      "stages": {
+        "prep": 1,
+        "fish": 0.9984,
+        "cook": 0.9949,
+        "eat": 0.9935
+      }
+    },
+    {
+      "trainSeed": 1539988333,
+      "converged": true,
+      "successRate": 0.8564,
+      "meanReward": 5.063,
+      "fishCaught": 2.34,
+      "stages": {
+        "prep": 1,
+        "fish": 0.9984,
+        "cook": 1,
+        "eat": 0
+      }
+    },
+    {
+      "trainSeed": 1523210714,
+      "converged": true,
+      "successRate": 0.9891,
+      "meanReward": 6.111,
+      "fishCaught": 2.34,
+      "stages": {
+        "prep": 1,
+        "fish": 0.9988,
+        "cook": 1,
+        "eat": 0.9942
+      }
+    }
+  ],
+  "baselines": {
+    "oracle": {
+      "successRate": 0.9847,
+      "meanReward": 6.862,
+      "stages": {
+        "prep": 0.9964,
+        "fish": 0.9965,
+        "cook": 0.9935,
+        "eat": 0.9981
+      }
+    },
+    "reflex": {
+      "successRate": 0.9818,
+      "meanReward": 4.313,
+      "stages": {
+        "prep": 0.993,
+        "fish": 0.9903,
+        "cook": 0.9935,
+        "eat": 0.9966
+      }
+    },
+    "random": {
+      "successRate": 0.0881,
+      "meanReward": -4.199
+    }
+  },
+  "readout": {
+    "featureNames": [
+      "forward_odn1_t",
+      "walk_dnp09_t",
+      "turn_left_t",
+      "turn_right_t",
+      "reverse_mdn_t",
+      "groom_adn1_t",
+      "escape_giant_fiber_t",
+      "feed_mn9_t",
+      "forward_odn1_t-1",
+      "walk_dnp09_t-1",
+      "turn_left_t-1",
+      "turn_right_t-1",
+      "reverse_mdn_t-1",
+      "groom_adn1_t-1",
+      "escape_giant_fiber_t-1",
+      "feed_mn9_t-1",
+      "bias"
+    ],
+    "rateScale": 100,
+    "perStage": true,
+    "weights": {
+      "prep": [
+        0.5743730289657669,
+        -1.0596254151194873,
+        -0.6439014635841753,
+        0.0548390711912178,
+        8.879331415089984,
+        4.450821913600716,
+        1.9674302077924946,
+        -2.10674532340728,
+        0.551920416279036,
+        0.44220085229879114,
+        -0.22377019582095467,
+        0.08261875059044456,
+        8.035109129659261,
+        4.2197959678856805,
+        3.2225853127936164,
+        -2.1364007484530965,
+        -8.916853222769102
+      ],
+      "fish": [
+        9.77177630264842,
+        3.395231047436774,
+        4.7625376220346,
+        2.2149696815619087,
+        7.739470134905479,
+        -0.0670480057831054,
+        1.8691898053337048,
+        -0.767107622194063,
+        10.93588209031702,
+        4.271833005725084,
+        6.666836114173713,
+        5.588261864048117,
+        6.608127712036221,
+        -0.08669966179721614,
+        1.116920244528508,
+        -1.1348297357564021,
+        -10.537474613187989
+      ],
+      "cook": [
+        -4.243809755356972,
+        2.5645361871161234,
+        12.298419189584564,
+        4.413708100770321,
+        0,
+        0,
+        0,
+        -0.10061522152524545,
+        -0.7611998297781156,
+        0.658491495570529,
+        11.299479572287167,
+        1.794113176699085,
+        0,
+        0,
+        0,
+        0.129586144231403,
+        -6.096964212770958
+      ],
+      "eat": [
+        -4.214038329779009,
+        -1.0689719825308113,
+        4.6748928611963585,
+        -1.9927666953818164,
+        0,
+        0,
+        0,
+        8.665060884398207,
+        -2.288591208236459,
+        1.6873975069607259,
+        2.005258750079633,
+        -1.2628037203189293,
+        0,
+        0,
+        0,
+        8.701267038024588,
+        -8.518310460125917
+      ]
+    }
+  },
+  "frozen": "The connectome. Nothing inside the simulator is trained, and the fly does not learn to fish, cook or eat.",
+  "trained": "17 linear readout weights, shared across all four decision stages.",
+  "heads": "per-stage"
+}

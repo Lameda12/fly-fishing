@@ -14,7 +14,7 @@
 // stimuli occur, and those are spliced from the same real recordings the moment
 // they are decided. Nothing is interpolated and nothing is modelled.
 
-import { assertUsableCache, baselineRows, overlayResponse } from "./cache.mjs";
+import { assertUsableCache, baselineRows, overlayResponse, restingRates } from "./cache.mjs";
 import { buildFeatures } from "./readout.mjs";
 import { createRng, deriveSeed } from "./rng.mjs";
 import { TASK } from "./task.mjs";
@@ -43,7 +43,17 @@ const windowOf = (tMs, task) => Math.round(tMs / task.windowMs);
  * Returns the decisions (for REINFORCE), the per-stage summary, and optionally
  * a per-window trace for the recorder.
  */
-export function runVoyage({ cache, seed, policy: policySpec, task = TASK, collect = false }) {
+export function runVoyage({
+  cache,
+  seed,
+  policy: policySpec,
+  task = TASK,
+  collect = false,
+  // Subtract the network's resting rates from every feature. Defaults to the
+  // cache's own measurement; pass null for the raw rates the single-stage
+  // fishing task was trained on. See `buildFeatures`.
+  resting = restingRates(cache),
+}) {
   assertUsableCache(cache, task);
   const rng = createRng(deriveSeed(seed, "voyage-splice"));
   const windows = Math.round(VOYAGE_MS / task.windowMs);
@@ -93,19 +103,21 @@ export function runVoyage({ cache, seed, policy: policySpec, task = TASK, collec
     }
 
     const rates = rows[index] ?? ZERO_RATES;
-    const features = buildFeatures(rates, previousRates);
+    const features = buildFeatures(rates, previousRates, resting);
     previousRates = rates;
 
     const stage = stageAt(tMs);
     const open = stage.decision && scorer.canDecide(tMs);
-    const action = open ? policy.act(tMs, features) : 0;
+    // The stage is passed through for the per-stage heads. It comes from the
+    // voyage clock, which is scripted; nothing decodes it from the rates.
+    const action = open ? policy.act(tMs, features, stage.id) : 0;
     const result = scorer.step(tMs, action);
 
     if (result.decision) {
       decisions.push({
         features,
         action: result.action,
-        probability: policy.probability ? policy.probability(features) : result.action,
+        probability: policy.probability ? policy.probability(features, stage.id) : result.action,
         reward: result.reward,
         stage: result.stage,
       });
@@ -115,7 +127,10 @@ export function runVoyage({ cache, seed, policy: policySpec, task = TASK, collec
         tMs,
         stage: stage.id,
         rates,
-        probability: policy.probability ? policy.probability(features) : null,
+        // Transit has no decision, so it has no P(act) either; the HUD draws a
+        // dash. The per-stage heads have nothing to ask during the row back.
+        probability:
+          stage.decision && policy.probability ? policy.probability(features, stage.id) : null,
         action: result.action,
         outcome: result.outcome,
       });

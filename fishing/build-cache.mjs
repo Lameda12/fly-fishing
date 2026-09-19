@@ -146,6 +146,14 @@ async function main() {
   // the sections this run recorded, so adding an event type costs one event
   // type's worth of compute rather than a whole cache.
   const cache = existing ? { ...existing, ...recorded } : recorded;
+  // `recorded.task.stimuli` only describes this run's sections, so merging one
+  // section at a time would otherwise drop every earlier stimulus's settings.
+  if (existing?.task?.stimuli) {
+    cache.task = {
+      ...recorded.task,
+      stimuli: { ...existing.task.stimuli, ...recorded.task.stimuli },
+    };
+  }
   // Derived from what is actually in the file rather than from a field, so a
   // merge into a cache written by an older build still lists its sections right.
   cache.sections = SECTIONS.filter((name) => cache[name]);

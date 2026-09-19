@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="760" viewBox="0 0 860 760" font-family="Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <rect width="860" height="760" fill="#0d1011"/>
+  <text x="68" y="34" fill="#edf2ef" font-size="16">Voyage training, seed 1592594996</text>
+  <text x="68" y="56" fill="#9ca8a3" font-size="11">The connectome is frozen. One 17-weight readout serves all four decision stages.</text>
+  <text x="68" y="86" fill="#edf2ef" font-size="13">Catch rate (fish caught / real bites)</text>
+  <rect x="68" y="96" width="764" height="168" fill="#15191a" stroke="#303738"/>
+  <line x1="68" y1="264.0" x2="832" y2="264.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="268.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.00</text>
+  <line x1="68" y1="222.0" x2="832" y2="222.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="226.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.25</text>
+  <line x1="68" y1="180.0" x2="832" y2="180.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="184.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.50</text>
+  <line x1="68" y1="138.0" x2="832" y2="138.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="142.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.75</text>
+  <line x1="68" y1="96.0" x2="832" y2="96.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="100.0" fill="#9ca8a3" font-size="11" text-anchor="end">1.00</text>
+  <polyline points="68.2,264.0 163.5,198.1 259.0,167.2 354.5,125.4 450.0,115.2 545.5,96.8 641.0,96.0 736.5,96.8 832.0,96.0" fill="none" stroke="#62c48d" stroke-width="1.8" stroke-linejoin="round"/>
+  <line x1="68" y1="98.6" x2="832" y2="98.6" stroke="#66a7cb" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.85"/>
+  <line x1="68" y1="249.2" x2="832" y2="249.2" stroke="#e1695e" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.85"/>
+  <line x1="80" y1="112" x2="98" y2="112" stroke="#62c48d" stroke-width="2" />
+  <text x="104" y="116" fill="#9ca8a3" font-size="11">trained readout (greedy eval)</text>
+  <line x1="80" y1="128" x2="98" y2="128" stroke="#66a7cb" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="104" y="132" fill="#9ca8a3" font-size="11">oracle and dip-delay</text>
+  <line x1="80" y1="144" x2="98" y2="144" stroke="#e1695e" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="104" y="148" fill="#9ca8a3" font-size="11">random control</text>
+  <text x="68.0" y="280" fill="#9ca8a3" font-size="11" text-anchor="middle">0</text>
+  <text x="259.0" y="280" fill="#9ca8a3" font-size="11" text-anchor="middle">1000</text>
+  <text x="450.0" y="280" fill="#9ca8a3" font-size="11" text-anchor="middle">2000</text>
+  <text x="641.0" y="280" fill="#9ca8a3" font-size="11" text-anchor="middle">3000</text>
+  <text x="832.0" y="280" fill="#9ca8a3" font-size="11" text-anchor="middle">4000</text>
+  <text x="68" y="310" fill="#edf2ef" font-size="13">Decoys hooked (the discrimination; lower is better)</text>
+  <rect x="68" y="320" width="764" height="168" fill="#15191a" stroke="#303738"/>
+  <line x1="68" y1="488.0" x2="832" y2="488.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="492.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.00</text>
+  <line x1="68" y1="446.0" x2="832" y2="446.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="450.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.25</text>
+  <line x1="68" y1="404.0" x2="832" y2="404.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="408.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.50</text>
+  <line x1="68" y1="362.0" x2="832" y2="362.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="366.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.75</text>
+  <line x1="68" y1="320.0" x2="832" y2="320.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="324.0" fill="#9ca8a3" font-size="11" text-anchor="end">1.00</text>
+  <polyline points="" fill="none" stroke="#e8bd57" stroke-width="1.8" stroke-linejoin="round"/>
+  <line x1="80" y1="336" x2="98" y2="336" stroke="#e8bd57" stroke-width="2" />
+  <text x="104" y="340" fill="#9ca8a3" font-size="11">trained readout (greedy eval)</text>
+  <text x="68.0" y="504" fill="#9ca8a3" font-size="11" text-anchor="middle">0</text>
+  <text x="259.0" y="504" fill="#9ca8a3" font-size="11" text-anchor="middle">1000</text>
+  <text x="450.0" y="504" fill="#9ca8a3" font-size="11" text-anchor="middle">2000</text>
+  <text x="641.0" y="504" fill="#9ca8a3" font-size="11" text-anchor="middle">3000</text>
+  <text x="832.0" y="504" fill="#9ca8a3" font-size="11" text-anchor="middle">4000</text>
+  <text x="68" y="534" fill="#edf2ef" font-size="13">Snapped lines per minute</text>
+  <rect x="68" y="544" width="764" height="168" fill="#15191a" stroke="#303738"/>
+  <line x1="68" y1="712.0" x2="832" y2="712.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="716.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.00</text>
+  <line x1="68" y1="670.0" x2="832" y2="670.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="674.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.25</text>
+  <line x1="68" y1="628.0" x2="832" y2="628.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="632.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.50</text>
+  <line x1="68" y1="586.0" x2="832" y2="586.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="590.0" fill="#9ca8a3" font-size="11" text-anchor="end">0.75</text>
+  <line x1="68" y1="544.0" x2="832" y2="544.0" stroke="#303738" stroke-width="1"/>
+  <text x="60" y="548.0" fill="#9ca8a3" font-size="11" text-anchor="end">1.00</text>
+  <polyline points="" fill="none" stroke="#66a7cb" stroke-width="1.8" stroke-linejoin="round"/>
+  <line x1="80" y1="560" x2="98" y2="560" stroke="#66a7cb" stroke-width="2" />
+  <text x="104" y="564" fill="#9ca8a3" font-size="11">trained readout (greedy eval)</text>
+  <text x="68.0" y="728" fill="#9ca8a3" font-size="11" text-anchor="middle">0</text>
+  <text x="259.0" y="728" fill="#9ca8a3" font-size="11" text-anchor="middle">1000</text>
+  <text x="450.0" y="728" fill="#9ca8a3" font-size="11" text-anchor="middle">2000</text>
+  <text x="641.0" y="728" fill="#9ca8a3" font-size="11" text-anchor="middle">3000</text>
+  <text x="832.0" y="728" fill="#9ca8a3" font-size="11" text-anchor="middle">4000</text>
+  <text x="450" y="746" fill="#9ca8a3" font-size="11" text-anchor="middle">training episode</text>
+</svg>

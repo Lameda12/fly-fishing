@@ -115,6 +115,29 @@ export const STAGES = Object.freeze([
     bad: null,
     act: "lift the pan",
     meanGapMs: 1_800,
+    // **Cooking gets a longer window than the other stages, and that is a
+    // measurement rather than a concession.** Every other stage inherits the
+    // bite reflex's 500 ms, which fits how the network answers: baiting,
+    // fishing and eating each ride a sharp transient that peaks at 200 ms and
+    // is back under half-peak within 300 ms. Odor is not like that. Recorded
+    // under the same background drive, `pan-ready` drives `turn_left` to a
+    // peak at 2150 ms and holds it above half-peak for 2750 ms: a tonic
+    // response to a 250 ms pulse, not a phasic one.
+    //
+    // With a 500 ms window that stage is not merely hard, it is
+    // anti-learnable. The one population that carries the signal is elevated
+    // for 5.5 times as long as it pays, so "act while turn_left is high" loses
+    // money at any act rate a random policy explores with, and the gradient on
+    // `turn_left` correctly runs negative -- away from the only feature that
+    // could solve the stage. Measured: the weight reaches -2.4 after 1500
+    // voyages when the sign it needs is positive, at every step size and both
+    // head shapes tried.
+    //
+    // 2500 ms matches the response the network actually produces, and it is
+    // also the honest reading of the task: a bite is a reflex and a hot pan is
+    // a condition. The re-cast still allows only one act per pan, so this buys
+    // no free reward, only a window the signal fits inside.
+    windowMs: 2_500,
   },
   {
     id: "eat",
@@ -159,7 +182,7 @@ export function buildStageEvents(stage, seed, { task = TASK, count = Infinity } 
   const start = STAGE_STARTS[STAGES.indexOf(stage)];
   const events = [];
   let at = start + task.leadInMs / 2 + rng.range(0, stage.meanGapMs / 2);
-  const end = start + stage.durationMs - task.hookWindowMs;
+  const end = start + stage.durationMs - (stage.windowMs ?? task.hookWindowMs);
 
   while (at < end && events.length < count) {
     // A stage with no `bad` type presents only its good one.
@@ -200,12 +223,16 @@ export function createVoyage(initialEvents = [], { task = TASK } = {}) {
     perStage[stage.id] = { chances: 0, correct: 0, wrong: 0, missed: 0, acts: 0 };
   }
 
+  const stageById = Object.fromEntries(STAGES.map((stage) => [stage.id, stage]));
+  /** How long an event of this stage stays actionable. See the cook stage. */
+  const windowOf = (event) => stageById[event.stage]?.windowMs ?? task.hookWindowMs;
+
   /** The unclaimed event whose window covers `tMs`, rewarding or not. */
   const liveEventAt = (tMs) => {
     for (let i = 0; i < events.length; i++) {
       if (claimed.has(i)) continue;
       const event = events[i];
-      if (tMs >= event.atMs && tMs < event.atMs + task.hookWindowMs) return i;
+      if (tMs >= event.atMs && tMs < event.atMs + windowOf(event)) return i;
     }
     return -1;
   };

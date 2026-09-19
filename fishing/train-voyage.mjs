@@ -1,12 +1,21 @@
 #!/usr/bin/env node
-// Train one shared readout across all four decision stages of the voyage.
+// Train the voyage readout across all four decision stages.
 //
-// Frozen: the connectome. Trained: the same 17 weights as the single-stage
-// task, except that now they have to mean four different things depending on
-// which sensory pattern is present. There is no stage input and no per-stage
-// head: the readout sees eight descending rates and nothing else, and has to
-// work out from those alone whether it is holding a bait, watching a bobber,
-// standing over a pan, or chewing.
+// Frozen: the connectome. Trained: a linear readout from the eight descending
+// rates to one act-or-wait decision, in one of two shapes.
+//
+//   --heads shared      one 17-weight readout for all four stages. It sees the
+//                       eight rates and nothing else, and has to work out from
+//                       those alone whether it is holding a bait, watching a
+//                       bobber, standing over a pan, or chewing.
+//   --heads per-stage   four 17-weight readouts, one per stage, each trained
+//                       only on its own stage's decisions. The stage index is
+//                       read off the voyage clock, so this arm is *told* which
+//                       stage it is in; the shared arm is not.
+//
+// Both are worth running and the README reports both, because the shared arm
+// fails in a specific and legible way: it learns baiting and fishing, drives
+// P(act) in the other two stages to 1e-4, and then cannot climb back out.
 //
 // Per-stage scores are the point of the output. A single number would hide the
 // interesting failure, which is learning one stage and not another.
@@ -17,7 +26,13 @@ import { parseArgs } from "node:util";
 
 import { REPO_ROOT } from "./brain-host.mjs";
 import { learningCurveSvg } from "./plot.mjs";
-import { FEATURE_COUNT, createPolicy, createReadout, createTrainer } from "./readout.mjs";
+import {
+  FEATURE_COUNT,
+  createPolicy,
+  createReadout,
+  createStagedReadout,
+  createTrainer,
+} from "./readout.mjs";
 import { deriveSeed } from "./rng.mjs";
 import { TASK } from "./task.mjs";
 import { STAGES } from "./voyage.mjs";
@@ -27,11 +42,13 @@ const DECISION_STAGES = STAGES.filter((stage) => stage.decision);
 
 const OPTIONS = {
   seed: { type: "string", default: "1592594996" },
-  episodes: { type: "string", default: "1500" },
+  episodes: { type: "string", default: "4000" },
   "eval-every": { type: "string", default: "50" },
   "eval-episodes": { type: "string", default: "24" },
-  "learning-rate": { type: "string", default: "0.05" },
+  "learning-rate": { type: "string", default: "0.02" },
   gamma: { type: "string", default: "0.9" },
+  epsilon: { type: "string", default: "0" },
+  heads: { type: "string", default: "per-stage" },
   seeds: { type: "string", default: "5" },
   cache: { type: "string" },
   out: { type: "string" },
@@ -42,11 +59,16 @@ const OPTIONS = {
 const USAGE = `Usage: node fishing/train-voyage.mjs [options]
 
   --seed N             run seed (default 1592594996)
-  --episodes N         training voyages per seed (default 1500)
+  --episodes N         training voyages per seed (default 4000; eating needs
+                       about 2200 of them before its weight beats the bias)
   --eval-every N       evaluate every N voyages (default 50)
   --eval-episodes N    held-out voyages per evaluation (default 24)
-  --learning-rate F    Adam step size (default 0.05)
+  --learning-rate F    Adam step size (default 0.02)
   --gamma F            reward-to-go discount (default 0.9)
+  --epsilon F          exploration floor during training (default 0; see the
+                       comment on the readout policy for why raising it does
+                       not rescue the shared head, and does break it)
+  --heads MODE         per-stage (default) or shared
   --seeds N            training seeds (default 5); training is bimodal, so one
                        seed reports a coin flip rather than a result
   --cache PATH         default results/dn-cache.json
@@ -92,38 +114,110 @@ export function evaluateVoyage({ cache, seeds, makePolicy, task = TASK }) {
   return { ...totals, stages, episodes: seeds.length };
 }
 
+/**
+ * Build the trainable part and the two policies that read it.
+ *
+ * `shared` is one readout for the whole voyage, updated from every decision
+ * with per-stage advantage normalisation so the busiest two stages cannot own
+ * the gradient. `per-stage` is one readout per stage; each is updated only
+ * from its own stage's decisions, by the same ungrouped reward-to-go path that
+ * trained the single-stage fishing task.
+ */
+function buildArm({ heads, stageIds, learningRate, gamma, task }) {
+  if (heads === "shared") {
+    const readout = createReadout();
+    const trainer = createTrainer({ readout, learningRate, gamma, groupAdvantages: true });
+    return {
+      checkpoint: readout,
+      behaviour: (epsilon, seed) => createPolicy("readout", { readout, seed, epsilon }),
+      greedy: () => createPolicy("readoutGreedy", { task, readout }),
+      update: (decisions) => trainer.update(decisions.map((d) => ({ ...d, group: d.stage }))),
+      // One head cannot hold a stage out: every window it saw belongs to it.
+      holdsOutDormantStages: false,
+    };
+  }
+  if (heads !== "per-stage") throw new Error(`unknown --heads mode "${heads}"`);
+
+  const staged = createStagedReadout({ stageIds });
+  const trainers = Object.fromEntries(
+    stageIds.map((id) => [id, createTrainer({ readout: staged.head(id), learningRate, gamma })]),
+  );
+  return {
+    checkpoint: staged,
+    behaviour: (_epsilon, seed) => createPolicy("stagedReadout", { staged, seed }),
+    greedy: () => createPolicy("stagedReadoutGreedy", { task, staged }),
+    /**
+     * Update each head from its own stage, skipping the stages that had no
+     * chance this voyage.
+     *
+     * **That skip is the difference between this arm working and not.** The
+     * voyage is a chain: there is nothing to cook unless a fish was caught, so
+     * `runVoyage` schedules zero cooking and eating events until the fishing
+     * head starts landing them, which takes about 200 voyages. Without the
+     * skip, those 200 voyages are not neutral for the cooking head. It still
+     * sees its 200 windows per voyage, acting in any of them is still a
+     * mistake, and it dutifully learns the only lesson available: never act.
+     * By the time the first pan appears the head is at a bias near -6 and
+     * P(act) near 0.001, and it never recovers. Measured: cooking and eating
+     * sit at 0.0% for 1500 voyages with the skip removed, on every seed and
+     * every step size tried.
+     *
+     * A voyage in which a stage never happened is not a hard sample of that
+     * stage, it is an absence of the stage, so the head is held out of it.
+     * This is a curriculum fix to a non-stationary task, and it is the reason
+     * the shared-readout arm cannot be repaired the same way: with one head
+     * there is nothing to hold out.
+     *
+     * Dormant means no events, not no rewarding events. A voyage where every
+     * bite turned out to be a decoy did happen, and the decoys it refused are
+     * exactly the samples that teach the difference; holding those out was
+     * tried and is strictly worse.
+     */
+    update: (decisions, events) => {
+      const present = new Set(events.map((event) => event.stage));
+      for (const id of stageIds) {
+        if (!present.has(id)) continue;
+        const slice = decisions.filter((d) => d.stage === id);
+        if (slice.length) trainers[id].update(slice);
+      }
+    },
+    holdsOutDormantStages: true,
+  };
+}
+
 export function trainVoyageReadout({
   cache,
   runSeed,
   episodes,
   heldOut,
   evalEvery = 50,
-  learningRate = 0.05,
+  learningRate = 0.02,
   gamma = 0.9,
+  heads = "per-stage",
+  epsilon = 0,
   task = TASK,
   onEval,
 }) {
-  const readout = createReadout();
-  const trainer = createTrainer({ readout, learningRate, gamma });
+  const arm = buildArm({
+    heads,
+    stageIds: DECISION_STAGES.map((stage) => stage.id),
+    learningRate,
+    gamma,
+    task,
+  });
   const points = [];
 
-  const measure = () =>
-    evaluateVoyage({
-      cache,
-      seeds: heldOut,
-      makePolicy: () => createPolicy("readoutGreedy", { task, readout }),
-      task,
-    });
+  const measure = () => evaluateVoyage({ cache, seeds: heldOut, makePolicy: arm.greedy, task });
 
   for (let episode = 1; episode <= episodes; episode++) {
     const seed = deriveSeed(runSeed, "voyage-train", episode);
-    const { decisions } = runVoyage({
+    const { decisions, events } = runVoyage({
       cache,
       seed,
-      policy: createPolicy("readout", { readout, seed: deriveSeed(seed, "act") }),
+      policy: arm.behaviour(epsilon, deriveSeed(seed, "act")),
       task,
     });
-    trainer.update(decisions);
+    arm.update(decisions, events);
 
     if (episode % evalEvery === 0 || episode === 1) {
       const result = measure();
@@ -143,7 +237,7 @@ export function trainVoyageReadout({
       onEval?.(episode, result);
     }
   }
-  return { readout, points, final: measure() };
+  return { readout: arm.checkpoint, greedy: arm.greedy, points, final: measure() };
 }
 
 async function main() {
@@ -212,7 +306,11 @@ async function main() {
   });
 
   say("");
-  say(`  training one shared readout across ${DECISION_STAGES.length} stages, seed ${runSeed}`);
+  say(
+    values.heads === "shared"
+      ? `  training one shared readout across ${DECISION_STAGES.length} stages, seed ${runSeed}`
+      : `  training ${DECISION_STAGES.length} per-stage readout heads, seed ${runSeed}`,
+  );
   say(`  cache: ${path.relative(process.cwd(), cachePath)} (ablation ${cache.ablation})`);
   say(
     `  oracle ${pct(oracle.successRate)} overall, reflex ${pct(reflex.successRate)},` +
@@ -225,7 +323,7 @@ async function main() {
   let bestReward = -Infinity;
   for (const trainSeed of trainSeeds) {
     const heldOut = voyageEvalSeeds(trainSeed, evalCount);
-    const { readout, points } = trainVoyageReadout({
+    const { readout, greedy, points } = trainVoyageReadout({
       cache,
       runSeed: trainSeed,
       episodes,
@@ -233,6 +331,8 @@ async function main() {
       evalEvery,
       learningRate: Number.parseFloat(values["learning-rate"]),
       gamma: Number.parseFloat(values.gamma),
+      epsilon: Number.parseFloat(values.epsilon),
+      heads: values.heads,
       onEval:
         trainSeeds.length === 1 || trainSeed === runSeed
           ? (episode, result) =>
@@ -245,11 +345,7 @@ async function main() {
               )
           : undefined,
     });
-    const scored = evaluateVoyage({
-      cache,
-      seeds: scoreSeeds,
-      makePolicy: () => createPolicy("readoutGreedy", { task: TASK, readout }),
-    });
+    const scored = evaluateVoyage({ cache, seeds: scoreSeeds, makePolicy: greedy });
     const converged = scored.successRate > 0.5;
     runs.push({
       trainSeed,
@@ -285,6 +381,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
     runSeed,
     episodes,
+    heads: values.heads,
     trainSeeds,
     evalEpisodes: scoreSeeds.length,
     convergedCount: survivors.length,
@@ -315,11 +412,14 @@ async function main() {
       "not learn to fish, cook or eat.",
     trained: `${FEATURE_COUNT} linear readout weights, shared across all four decision stages.`,
   };
-  const reportPath = path.join(outDir, "voyage.json");
+  // The shared arm is the comparison, not the deliverable, so it writes beside
+  // the per-stage result rather than over it.
+  const suffix = values.heads === "shared" ? "-shared" : "";
+  const reportPath = path.join(outDir, `voyage${suffix}.json`);
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
   if (best) {
-    const svgPath = path.join(outDir, "voyage-curve.svg");
+    const svgPath = path.join(outDir, `voyage-curve${suffix}.svg`);
     await writeFile(
       svgPath,
       learningCurveSvg({

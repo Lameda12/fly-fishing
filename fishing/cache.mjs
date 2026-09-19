@@ -163,6 +163,29 @@ export function assertUsableCache(cache, task = TASK) {
 }
 
 /**
+ * The network's mean resting rate per readout population, over every recorded
+ * baseline window.
+ *
+ * Four of the eight sit at exactly 0.00 Hz under the background hunger drive
+ * and four do not, and that split turns out to decide which stages of the
+ * voyage can be learned at all. See `buildFeatures` in `fishing/readout.mjs`.
+ */
+export function restingRates(cache) {
+  const traces = cache.baseline.traces;
+  const width = traces[0][0].length;
+  const mean = new Array(width).fill(0);
+  let rows = 0;
+  for (const trace of traces) {
+    for (const row of trace) {
+      rows++;
+      for (let i = 0; i < width; i++) mean[i] += row[i];
+    }
+  }
+  if (!rows) throw new Error("the cache has no baseline windows");
+  return mean.map((total) => total / rows);
+}
+
+/**
  * A stretch of recorded background, `windows` long, taken at a random offset
  * inside a random baseline trace.
  */
