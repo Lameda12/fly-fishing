@@ -35,6 +35,7 @@ const OPTIONS = {
   seed: { type: "string", default: "1592594996" },
   episodes: { type: "string", default: "600" },
   "eval-episodes": { type: "string", default: "1000" },
+  seeds: { type: "string", default: "5" },
   out: { type: "string" },
   quiet: { type: "boolean", default: false },
   help: { type: "boolean", default: false },
@@ -45,6 +46,9 @@ const USAGE = `Usage: node tools/ablation.mjs [options]
   --seed N             run seed (default 1592594996), shared by every arm
   --episodes N         training episodes per arm (default 600)
   --eval-episodes N    evaluation episodes, shared by every arm (default 1000)
+  --seeds N            training seeds per arm (default 5). REINFORCE on this task
+                       either finds the signal or collapses to never acting, so a
+                       single seed reports a coin flip rather than a result.
   --out PATH           default results/ablation.json
   --quiet
   --help
@@ -79,13 +83,19 @@ async function main() {
   const runSeed = Number.parseInt(values.seed, 10) >>> 0;
   const episodes = Number.parseInt(values.episodes, 10);
   const evalCount = Number.parseInt(values["eval-episodes"], 10);
+  const seedCount = Number.parseInt(values.seeds, 10);
   const out = values.out ? path.resolve(values.out) : path.join(REPO_ROOT, "results", "ablation.json");
 
-  // Every arm trains on the same schedules and is scored on the same episodes.
-  const heldOut = evalSeeds(runSeed, 24);
+  // Every arm trains from the same list of seeds and is scored on the same
+  // episodes, so nothing but the connectome differs between them.
+  const trainSeeds = Array.from({ length: seedCount }, (_, i) =>
+    i === 0 ? runSeed : deriveSeed(runSeed, "arm-seed", i),
+  );
   const scoreSeeds = Array.from({ length: evalCount }, (_, i) =>
     deriveSeed(runSeed, "report", i),
   );
+  /** A run that never learned to act at all, which is the failure mode here. */
+  const converged = (result) => result.catchRate > 0.5;
 
   const arms = [];
   for (const ablation of ABLATIONS) {
@@ -119,25 +129,54 @@ async function main() {
     );
 
     const started = Date.now();
-    const { readout, points, final } = trainReadout({
-      cache,
-      runSeed,
-      episodes,
-      heldOut,
-      evalEvery: 50,
-      onEval: (episode, result) =>
-        say(
-          `  episode ${String(episode).padStart(4)}   catch ${pct(result.catchRate).padStart(6)}` +
-            `   decoys hooked ${pct(result.decoyHookRate).padStart(6)}`,
-        ),
-    });
-    void final;
+    const runs = [];
+    let bestReadout = null;
+    let bestReward = -Infinity;
+    for (const trainSeed of trainSeeds) {
+      const heldOut = evalSeeds(trainSeed, 24);
+      const { readout, points } = trainReadout({
+        cache,
+        runSeed: trainSeed,
+        episodes,
+        heldOut,
+        evalEvery: 1e9,
+      });
+      const result = evaluate({
+        cache,
+        seeds: scoreSeeds,
+        makePolicy: () => createPolicy("readoutGreedy", { task: TASK, readout }),
+      });
+      runs.push({
+        trainSeed,
+        converged: converged(result),
+        catchRate: Number(result.catchRate.toFixed(4)),
+        decoyHookRate: Number(result.decoyHookRate.toFixed(4)),
+        meanReward: Number(result.totalReward.toFixed(3)),
+        curve: points,
+      });
+      if (result.totalReward > bestReward) {
+        bestReward = result.totalReward;
+        bestReadout = readout;
+      }
+      say(
+        `  seed ${String(trainSeed).padStart(10)}  catch ${pct(result.catchRate).padStart(6)}` +
+          `  decoys ${pct(result.decoyHookRate).padStart(6)}` +
+          `  reward ${result.totalReward.toFixed(2).padStart(6)}` +
+          `${converged(result) ? "" : "   (collapsed to never acting)"}`,
+      );
+    }
 
-    const scored = evaluate({
-      cache,
-      seeds: scoreSeeds,
-      makePolicy: () => createPolicy("readoutGreedy", { task: TASK, readout }),
-    });
+    const readout = bestReadout;
+    const survivors = runs.filter((run) => run.converged);
+    const mean = (pick) =>
+      survivors.length ? survivors.reduce((t, r) => t + pick(r), 0) / survivors.length : 0;
+    const scored = {
+      catchRate: mean((r) => r.catchRate),
+      decoyHookRate: mean((r) => r.decoyHookRate),
+      falseHooksPerMinute: 0,
+      hookPrecision: 0,
+      totalReward: mean((r) => r.meanReward),
+    };
     // The oracle is a property of the schedule, not of the network, so it is the
     // same in every arm. Re-scoring it per arm is the check that that is true.
     const oracle = evaluate({
@@ -152,11 +191,14 @@ async function main() {
       separation,
       bestDPrime: best?.dPrime ?? null,
       escapeDPrime: escape.dPrime,
+      seeds: trainSeeds,
+      runs,
+      convergedCount: survivors.length,
+      // Averaged over the seeds that converged, so a converged run's score is
+      // not dragged down by a collapsed one; the count says how often that was.
       trained: {
         catchRate: Number(scored.catchRate.toFixed(4)),
         decoyHookRate: Number(scored.decoyHookRate.toFixed(4)),
-        falseHooksPerMinute: Number(scored.falseHooksPerMinute.toFixed(3)),
-        hookPrecision: Number(scored.hookPrecision.toFixed(4)),
         meanReward: Number(scored.totalReward.toFixed(3)),
       },
       oracle: {
@@ -167,7 +209,6 @@ async function main() {
         feature: name,
         weight: Number(readout.weights[i].toFixed(4)),
       })),
-      curve: points,
       wallSeconds: Number(((Date.now() - started) / 1000).toFixed(1)),
     });
   }
@@ -178,6 +219,7 @@ async function main() {
     runSeed,
     trainEpisodes: episodes,
     evalEpisodes: evalCount,
+    trainSeeds,
     arms,
     provenance: {
       frozen:
@@ -205,21 +247,30 @@ async function main() {
 
   const lines = [];
   lines.push(
-    `All three arms: same seed, same schedules, same ${evalCount} evaluation episodes,` +
-      ` ${episodes} training episodes each.`,
+    `All three arms: the same ${seedCount} training seeds, the same schedules, and the` +
+      ` same ${evalCount} evaluation episodes, ${episodes} training episodes per seed.`,
   );
   lines.push("");
   lines.push(
-    "| Connectome | escape_giant_fiber d' | Best feature d' | Catch rate | Decoys hooked | Mean reward |",
+    "| Connectome | escape_giant_fiber d' | Best feature d' | Runs that converged | Catch rate | Decoys hooked | Mean reward |",
   );
-  lines.push("| --- | ---: | ---: | ---: | ---: | ---: |");
+  lines.push("| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
   for (const arm of arms) {
+    const converged = `${arm.convergedCount}/${seedCount}`;
+    const cells = arm.convergedCount
+      ? `${pct(arm.trained.catchRate)} | ${pct(arm.trained.decoyHookRate)} | ${arm.trained.meanReward.toFixed(2)}`
+      : "- | - | -";
     lines.push(
       `| ${label[arm.ablation]} | ${arm.escapeDPrime ?? "-"} | ${arm.bestDPrime ?? "-"} | ` +
-        `${pct(arm.trained.catchRate)} | ${pct(arm.trained.decoyHookRate)} | ` +
-        `${arm.trained.meanReward.toFixed(2)} |`,
+        `${converged} | ${cells} |`,
     );
   }
+  lines.push("");
+  lines.push(
+    "Catch rate, decoys hooked and mean reward are averaged over the seeds that converged." +
+      " A run is counted as converged if it learned to act at all; the failure mode here is" +
+      " collapsing to never acting, which scores exactly zero.",
+  );
   lines.push("");
   lines.push("Peak response per arm, bite against decoy, on the two populations that carry the signal:");
   lines.push("");

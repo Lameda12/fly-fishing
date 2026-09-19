@@ -245,7 +245,10 @@ All four policies on the same 1000 evaluation episodes, seed 1592594996:
 ![Learning curve](results/learning-curve.svg)
 
 **The trained readout matches the oracle exactly**, and it does so by telling a
-bite from a decoy rather than by reacting to the bobber. The comparison that
+bite from a decoy rather than by reacting to the bobber. One caveat carries
+through every number in this table: training is bimodal, and **1 run in 5 fails
+to converge at all**, scoring zero. This row is a converged run. The ablation
+section below measures that rate and explains it. The comparison that
 carries the claim is the third row: fixed-delay-after-dip catches every fish
 too, but hooks every decoy doing it, which halves its reward. The readout
 catches every fish and hooks none of the decoys.
@@ -352,6 +355,74 @@ episodes.** The argument for why that is exact rather than approximate is above;
 running whole episodes against the live network to confirm it end to end is
 listed as a next step and has not been done.
 
+## Ablation: does the wiring matter?
+
+Three caches, recorded from the same simulator through the same stimulus
+channels, differing only in what was done to the connectome before upstream's
+unmodified `BrainEngine` was built from it. **Weight shuffle** permutes which
+weight sits on which edge, leaving every source, target and the whole multiset
+of weights untouched, so total available drive is identical. **Input shuffle**
+leaves the graph and weights alone and re-draws the stimulus and readout
+populations as random neurons of the same count.
+
+All three arms: the same 5 training seeds, the same schedules, and the same 1000 evaluation episodes, 600 training episodes per seed.
+
+| Connectome | escape_giant_fiber d' | Best feature d' | Runs that converged | Catch rate | Decoys hooked | Mean reward |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Intact connectome | 9.15 | 9.15 | 4/5 | 100.0% | 0.0% | 5.96 |
+| Weights shuffled across edges | 7.97 | 7.97 | 0/5 | - | - | - |
+| Stimulus and readout populations randomized | 0.62 | 0.62 | 0/5 | - | - | - |
+
+Catch rate, decoys hooked and mean reward are averaged over the seeds that converged. A run is counted as converged if it learned to act at all; the failure mode here is collapsing to never acting, which scores exactly zero.
+
+Peak response per arm, bite against decoy, on the two populations that carry the signal:
+
+| Connectome | `escape_giant_fiber` bite | decoy | `reverse_mdn` bite | decoy |
+| --- | ---: | ---: | ---: | ---: |
+| Intact connectome | 186.09 ± 3.02 | 150.38 ± 4.62 | 43.33 ± 5.68 | 19.02 ± 2.94 |
+| Weights shuffled across edges | 80.38 ± 4.3 | 41.07 ± 5.49 | 0 ± 0 | 0 ± 0 |
+| Stimulus and readout populations randomized | 16.73 ± 0.16 | 16.59 ± 0.29 | 0 ± 0 | 0 ± 0 |
+
+### Reading this honestly
+
+**The headline result is conditional on convergence, and one run in five does
+not converge.** REINFORCE on this task is bimodal: it either finds the signal
+and reaches the oracle, or it collapses to never acting and scores exactly
+zero. On the intact connectome 4 of 5 seeds converge. The 100% catch rate
+reported in the results section above is one of those four, and it is a fair
+number for a converged run, but a single-seed table would have been reporting a
+coin flip. Anywhere this repository quotes 100%, read it as "100%, in the 4 runs
+out of 5 that learned to act at all".
+
+**The weight-shuffle arm is the interesting one, and it does not say what an
+ablation usually says.** The shuffled connectome still separates a bite from a
+decoy nearly as well as the intact one: d' 7.97 against 9.15, with peak
+`escape_giant_fiber` at 80.4 Hz for a bite and 41.1 Hz for a decoy against a
+baseline of exactly zero. The information is there. The readout still never
+found it, in 0 of 5 seeds.
+
+Two explanations were tested and ruled out. It is not the lower absolute firing
+rate: scaling that arm's recorded rates by 2.3x and by 4x, so the features land
+where the intact arm's do, still gives 0%. It is not seed luck: five seeds, all
+zero, against four of five on the intact arm. Four hyperparameter settings
+(600 and 2000 episodes, learning rates 0.05, 0.15 and 0.3) also all give 0%.
+
+So the honest conclusion is narrower than "the wiring carries the signal". It is:
+**the intact network presents the signal in a form this learner reliably finds,
+and the weight-shuffled one does not, even though a classifier handed the same
+recordings could separate them.** One concrete difference is visible in the
+table: shuffling the weights kills `reverse_mdn` outright, from 43.3 Hz down to
+0.0 Hz, and the trained readout on the intact connectome puts its largest
+weights on exactly that population. The intact wiring supplies a second
+informative readout; the shuffled one leaves a single one.
+
+**The input-shuffle arm is the control that says the readout is not cheating.**
+With the populations randomized, d' falls to 0.62 and the bite and decoy peaks
+are 16.73 Hz and 16.59 Hz: no separation survives, and nothing could learn this
+from those recordings. That it also scores 0 is the expected and uninteresting
+outcome, and it is there so that the weight-shuffle row has something to be
+compared against.
+
 ## What is in this commit, and what is not
 
 Present:
@@ -370,10 +441,6 @@ Not yet, and each is a named next step rather than a silent omission:
 - **Live mode.** A WebSocket from the Python side, with a documented schema.
   Replay mode is all that ships here, which is also what lets `web/` deploy as a
   static site with no backend.
-- **The ablation results.** Both ablations (`--ablation weight-shuffle`,
-  `--ablation input-shuffle`) are implemented in `fishing/brain-host.mjs` and
-  unit tested, and each needs its own recorded cache. No ablation number is
-  claimed until those runs exist.
 - **A live-sim validation column.** The results above are measured on spliced
   cache episodes. Running whole episodes against the live network to confirm the
   splice end to end is the check that has not been done yet.

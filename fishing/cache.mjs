@@ -23,10 +23,16 @@
 
 import { READOUT_FEATURES, featuresOf } from "./brain-host.mjs";
 import { createRng, deriveSeed } from "./rng.mjs";
-import { TASK, loomHzFor } from "./task.mjs";
+import { TASK } from "./task.mjs";
+import { STIMULI } from "./voyage.mjs";
 
-/** The recorded sections. `baseline` is the background; the rest are events. */
-export const EVENT_SECTIONS = Object.freeze(["bite", "decoy"]);
+/**
+ * The recorded sections: `baseline` is the background, and one per stimulus the
+ * voyage can present. `bite` and `decoy` are in that table too, so a cache
+ * recorded for the single-stage task is a subset of a voyage cache rather than
+ * a different thing, and one can be merged into the other.
+ */
+export const EVENT_SECTIONS = Object.freeze(Object.keys(STIMULI));
 export const SECTIONS = Object.freeze(["baseline", ...EVENT_SECTIONS]);
 
 export const CACHE_SCHEMA_VERSION = 2;
@@ -95,8 +101,14 @@ export async function buildCache({
   const responseWindows = Math.round(RESPONSE_MS / windowMs);
   for (const type of EVENT_SECTIONS) {
     if (!sections.includes(type)) continue;
-    const hz = loomHzFor({ type }, task);
-    const section = { settleMs: SETTLE_MS, durationMs: RESPONSE_MS, loomHz: hz, seeds: [], traces: [] };
+    const pulse = STIMULI[type];
+    const section = {
+      settleMs: SETTLE_MS,
+      durationMs: RESPONSE_MS,
+      stimulus: pulse,
+      seeds: [],
+      traces: [],
+    };
     for (let i = 0; i < eventTraces; i++) {
       const traceSeed = deriveSeed(seed, type, i);
       onProgress?.({ stage: type, index: i, of: eventTraces });
@@ -104,10 +116,9 @@ export async function buildCache({
       host.settle(SETTLE_MS, background);
       section.seeds.push(traceSeed);
       section.traces.push(
-        record(responseWindows, (tMs) => ({
-          ...background,
-          loomHz: tMs < task.biteDurationMs ? hz : 0,
-        })),
+        record(responseWindows, (tMs) =>
+          tMs < task.biteDurationMs ? { ...background, ...pulse } : background,
+        ),
       );
     }
     recorded[type] = section;
@@ -130,9 +141,10 @@ export async function buildCache({
     sections: Object.keys(recorded),
     task: {
       backgroundHungerHz: task.backgroundHungerHz,
-      biteLoomHz: task.biteLoomHz,
-      decoyLoomHz: task.decoyLoomHz,
       biteDurationMs: task.biteDurationMs,
+      stimuli: Object.fromEntries(
+        Object.entries(STIMULI).filter(([name]) => recorded[name]),
+      ),
     },
     ...recorded,
     provenance:
